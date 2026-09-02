@@ -238,13 +238,18 @@ function plot() {
   const unitLabel = unit === "m" ? "Cable length (m)" : "Cable length (ft)";
 
   const layout = {
-    title: { text: `${site} \u2014 Hole ${hole} \u2014 Neutron Count vs Cable Length`, font: { family: "IBM Plex Sans", size: 16 } },
-    xaxis: { title: "Neutron Count (MD)", side: "top" },
+    title: {
+      text: `${site} \u2014 Hole ${hole} \u2014 Neutron Count vs Cable Length`,
+      font: { family: "IBM Plex Sans", size: 16 },
+      y: 0.98,
+      yanchor: "top"
+    },
+    xaxis: { title: { text: "Neutron Count (MD)", standoff: 8 }, side: "top" },
     yaxis: { title: unitLabel, autorange: "reversed" },
     font: { family: "IBM Plex Sans", color: "#1E2624" },
     plot_bgcolor: "#FFFFFF",
     paper_bgcolor: "#FFFFFF",
-    margin: { t: 60, r: 30, l: 60, b: 40 },
+    margin: { t: 100, r: 30, l: 60, b: 40 },
     legend: { orientation: "h", y: -0.12 }
   };
 
