@@ -106,11 +106,22 @@ function fillSelect(selectEl, values) {
 // Rebuild the "compare against" checkbox list: every (year, month) that
 // actually has data for the chosen Site + Hole ID, excluding whichever
 // (year, month) is currently selected as the primary series.
+//
+// Preserves the previous checked state across rebuilds (e.g. switching
+// Hole ID): if "select all" was checked, the new list is fully checked
+// too; otherwise, any individually-checked month/year is re-checked only
+// if it still exists for the new selection — if it doesn't, it's simply
+// not offered (which is the "unchecks if no data available" behavior).
 function onPrimaryChange() {
   const site = el("siteSelect").value;
   const hole = el("holeSelect").value;
   const primaryYear = parseInt(el("yearSelect").value, 10);
   const primaryMonth = parseInt(el("monthSelect").value, 10);
+
+  const wasSelectAll = el("selectAllCompare").checked;
+  const previouslyChecked = new Set(
+    [...document.querySelectorAll(".compareCb:checked")].map((cb) => cb.value)
+  );
 
   const combosSet = new Set();
   rows
@@ -122,10 +133,11 @@ function onPrimaryChange() {
     .filter(([y, m]) => !(y === primaryYear && m === primaryMonth))
     .sort((a, b) => (b[0] - a[0]) || (b[1] - a[1]));
 
-  renderCompareChecks(combos);
+  renderCompareChecks(combos, { wasSelectAll, previouslyChecked });
 }
 
-function renderCompareChecks(combos) {
+function renderCompareChecks(combos, prevState = {}) {
+  const { wasSelectAll = false, previouslyChecked = new Set() } = prevState;
   const container = el("compareChecks");
   container.innerHTML = "";
 
@@ -140,6 +152,7 @@ function renderCompareChecks(combos) {
   }
 
   el("selectAllCompare").disabled = false;
+  el("selectAllCompare").checked = wasSelectAll;
 
   combos.forEach(([y, m]) => {
     const label = document.createElement("label");
@@ -147,6 +160,7 @@ function renderCompareChecks(combos) {
     cb.type = "checkbox";
     cb.value = `${y}-${m}`;
     cb.className = "compareCb";
+    cb.checked = wasSelectAll || previouslyChecked.has(cb.value);
     label.appendChild(cb);
     label.appendChild(document.createTextNode(`${monthName(m)} ${y}`));
     container.appendChild(label);
