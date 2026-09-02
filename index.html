@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Neutron–Gamma Probe Viewer</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div class="frame">
+
+  <aside class="rail">
+    <header class="rail__header">
+      <h1>Neutron&ndash;Gamma Probe Viewer</h1>
+      <p class="sync" id="syncStatus">Loading sheet&hellip;</p>
+    </header>
+
+    <div class="field">
+      <label for="siteSelect">Site</label>
+      <select id="siteSelect"></select>
+    </div>
+
+    <div class="field">
+      <label for="holeSelect">Hole ID</label>
+      <select id="holeSelect"></select>
+    </div>
+
+    <div class="field">
+      <label for="yearSelect">Year</label>
+      <select id="yearSelect"></select>
+    </div>
+
+    <div class="field">
+      <label for="monthSelect">Month</label>
+      <select id="monthSelect">
+        <option value="1">January</option>
+        <option value="2">February</option>
+        <option value="3">March</option>
+        <option value="4">April</option>
+        <option value="5">May</option>
+        <option value="6">June</option>
+        <option value="7">July</option>
+        <option value="8">August</option>
+        <option value="9">September</option>
+        <option value="10">October</option>
+        <option value="11">November</option>
+        <option value="12">December</option>
+      </select>
+    </div>
+
+    <div class="field">
+      <label for="unitSelect">Cable length units</label>
+      <select id="unitSelect">
+        <option value="ft">Feet</option>
+        <option value="m">Meters</option>
+      </select>
+    </div>
+
+    <hr class="rule">
+
+    <div class="field">
+      <label for="modeSelect">Compare against</label>
+      <select id="modeSelect">
+        <option value="single">Nothing &mdash; single month</option>
+        <option value="vsMonth">A different month</option>
+        <option value="vsYears">Same month, other years</option>
+      </select>
+    </div>
+
+    <div class="field field--sub" id="vsMonthFields" hidden>
+      <label for="compareYearSelect">Compare year</label>
+      <select id="compareYearSelect"></select>
+      <label for="compareMonthSelect">Compare month</label>
+      <select id="compareMonthSelect">
+        <option value="1">January</option>
+        <option value="2">February</option>
+        <option value="3">March</option>
+        <option value="4">April</option>
+        <option value="5">May</option>
+        <option value="6">June</option>
+        <option value="7">July</option>
+        <option value="8">August</option>
+        <option value="9">September</option>
+        <option value="10">October</option>
+        <option value="11">November</option>
+        <option value="12">December</option>
+      </select>
+    </div>
+
+    <div class="field field--sub" id="vsYearsFields" hidden>
+      <label>Years to include</label>
+      <div class="yearChecks" id="yearChecks"></div>
+    </div>
+
+    <button id="plotBtn" class="plotBtn">Plot</button>
+
+    <p class="note" id="statusNote"></p>
+  </aside>
+
+  <main class="stage">
+    <div id="plot" class="plot"></div>
+  </main>
+
+</div>
+
+<script src="https://cdn.plot.ly/plotly-2.32.0.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+<script src="config.js"></script>
+<script src="script.js"></script>
+</body>
+</html>

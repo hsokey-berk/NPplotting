@@ -1,0 +1,166 @@
+:root {
+  --bg: #EEEFEA;
+  --panel: #FFFFFF;
+  --ink: #1E2624;
+  --ink-soft: #5B655F;
+  --line: #D3D6CC;
+  --accent: #2F6F62;
+  --accent-ink: #FFFFFF;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: 'IBM Plex Sans', system-ui, sans-serif;
+  font-size: 15px;
+  line-height: 1.45;
+}
+
+.frame {
+  display: grid;
+  grid-template-columns: 320px 1fr;
+  min-height: 100vh;
+}
+
+/* ---- Sidebar ---- */
+
+.rail {
+  background: var(--panel);
+  border-right: 1px solid var(--line);
+  padding: 28px 24px 32px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.rail__header {
+  margin-bottom: 8px;
+}
+
+.rail__header h1 {
+  font-size: 19px;
+  font-weight: 600;
+  margin: 0 0 6px;
+  letter-spacing: -0.01em;
+}
+
+.sync {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 12px;
+  color: var(--ink-soft);
+  margin: 0;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--line);
+}
+
+.field--sub {
+  padding-left: 12px;
+  border-left: 2px solid var(--line);
+  border-bottom: none;
+  margin-top: -4px;
+}
+
+.field label {
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--ink-soft);
+  text-transform: none;
+}
+
+select {
+  font-family: inherit;
+  font-size: 14.5px;
+  color: var(--ink);
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  padding: 7px 8px;
+  appearance: none;
+  background-image: linear-gradient(45deg, transparent 50%, var(--ink-soft) 50%), linear-gradient(135deg, var(--ink-soft) 50%, transparent 50%);
+  background-position: calc(100% - 16px) center, calc(100% - 11px) center;
+  background-size: 5px 5px, 5px 5px;
+  background-repeat: no-repeat;
+}
+
+select:focus, .plotBtn:focus, input:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.rule {
+  border: none;
+  border-top: 1px solid var(--line);
+  margin: 4px 0;
+}
+
+.yearChecks {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 13.5px;
+}
+
+.yearChecks label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--ink);
+  font-weight: 400;
+  cursor: pointer;
+}
+
+.plotBtn {
+  margin-top: 8px;
+  background: var(--accent);
+  color: var(--accent-ink);
+  border: none;
+  border-radius: 3px;
+  padding: 11px 14px;
+  font-family: inherit;
+  font-size: 14.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.plotBtn:hover { background: #26594E; }
+
+.note {
+  font-size: 12.5px;
+  color: var(--ink-soft);
+  min-height: 1.4em;
+  margin: 0;
+}
+
+.note.error { color: #A4552E; }
+
+/* ---- Plot stage ---- */
+
+.stage {
+  padding: 28px;
+  display: flex;
+}
+
+.plot {
+  flex: 1;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  min-height: 560px;
+}
+
+@media (max-width: 800px) {
+  .frame { grid-template-columns: 1fr; }
+  .rail { border-right: none; border-bottom: 1px solid var(--line); }
+  .stage { padding: 16px; }
+}
