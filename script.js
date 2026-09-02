@@ -8,12 +8,7 @@ const el = (id) => document.getElementById(id);
 // ---- Load & parse CSV ----
 
 function loadData() {
-  if (!CSV_URL || CSV_URL.includes("PASTE_YOUR")) {
-    setStatus("No sheet linked yet — edit config.js and paste your published CSV URL.", true);
-    return;
-  }
-
-  Papa.parse(CSV_URL, {
+  Papa.parse(CSV_FILENAME, {
     download: true,
     header: true,
     skipEmptyLines: true,
@@ -21,18 +16,18 @@ function loadData() {
       try {
         rows = results.data.map(parseRow).filter((r) => r !== null);
         if (rows.length === 0) {
-          setStatus("Sheet loaded, but no valid rows were found — check column names match exactly.", true);
+          setStatus("File loaded, but no valid rows were found — check column names match exactly.", true);
           return;
         }
         populateSiteOptions();
-        el("syncStatus").textContent = `Synced ${rows.length} rows \u00b7 ${new Date().toLocaleTimeString()}`;
+        el("syncStatus").textContent = `Loaded ${rows.length} rows from ${CSV_FILENAME}`;
         setStatus("");
       } catch (e) {
-        setStatus("Error parsing sheet: " + e.message, true);
+        setStatus("Error parsing " + CSV_FILENAME + ": " + e.message, true);
       }
     },
     error: (err) => {
-      setStatus("Could not load the sheet. Check the CSV_URL in config.js and that it's published to web.", true);
+      setStatus(`Could not load ${CSV_FILENAME}. Check that it's in the same folder as index.html, and that CSV_FILENAME in config.js matches the exact filename.`, true);
       console.error(err);
     }
   });
@@ -95,8 +90,7 @@ function onHoleChange() {
   )].sort((a, b) => b - a);
 
   fillSelect(el("yearSelect"), years);
-  fillSelect(el("compareYearSelect"), years);
-  renderYearChecks(years);
+  onPrimaryChange();
 }
 
 function fillSelect(selectEl, values) {
@@ -109,54 +103,75 @@ function fillSelect(selectEl, values) {
   });
 }
 
-function renderYearChecks(years) {
-  const container = el("yearChecks");
+// Rebuild the "compare against" checkbox list: every (year, month) that
+// actually has data for the chosen Site + Hole ID, excluding whichever
+// (year, month) is currently selected as the primary series.
+function onPrimaryChange() {
+  const site = el("siteSelect").value;
+  const hole = el("holeSelect").value;
+  const primaryYear = parseInt(el("yearSelect").value, 10);
+  const primaryMonth = parseInt(el("monthSelect").value, 10);
+
+  const combosSet = new Set();
+  rows
+    .filter((r) => r.site === site && r.holeId === hole)
+    .forEach((r) => combosSet.add(r.date.year + "-" + r.date.month));
+
+  const combos = [...combosSet]
+    .map((s) => s.split("-").map(Number))
+    .filter(([y, m]) => !(y === primaryYear && m === primaryMonth))
+    .sort((a, b) => (b[0] - a[0]) || (b[1] - a[1]));
+
+  renderCompareChecks(combos);
+}
+
+function renderCompareChecks(combos) {
+  const container = el("compareChecks");
   container.innerHTML = "";
-  years.forEach((y) => {
+
+  if (combos.length === 0) {
+    const p = document.createElement("p");
+    p.className = "empty";
+    p.textContent = "No other months available for this hole.";
+    container.appendChild(p);
+    el("selectAllCompare").checked = false;
+    el("selectAllCompare").disabled = true;
+    return;
+  }
+
+  el("selectAllCompare").disabled = false;
+
+  combos.forEach(([y, m]) => {
     const label = document.createElement("label");
     const cb = document.createElement("input");
     cb.type = "checkbox";
-    cb.value = y;
-    cb.checked = true;
+    cb.value = `${y}-${m}`;
+    cb.className = "compareCb";
     label.appendChild(cb);
-    label.appendChild(document.createTextNode(y));
+    label.appendChild(document.createTextNode(`${monthName(m)} ${y}`));
     container.appendChild(label);
   });
 }
 
-// ---- Mode switching UI ----
-
-function onModeChange() {
-  const mode = el("modeSelect").value;
-  el("vsMonthFields").hidden = mode !== "vsMonth";
-  el("vsYearsFields").hidden = mode !== "vsYears";
+function onSelectAllChange() {
+  const checked = el("selectAllCompare").checked;
+  document.querySelectorAll(".compareCb").forEach((cb) => (cb.checked = checked));
 }
 
-// ---- Build (year, month) combos per selected mode ----
+// ---- Build (year, month) combos to plot ----
 
 function buildCombos() {
-  const mode = el("modeSelect").value;
-  const targetYear = parseInt(el("yearSelect").value, 10);
-  const targetMonth = parseInt(el("monthSelect").value, 10);
+  const primaryYear = parseInt(el("yearSelect").value, 10);
+  const primaryMonth = parseInt(el("monthSelect").value, 10);
 
-  if (mode === "single") {
-    return [[targetYear, targetMonth]];
-  }
+  const combos = [[primaryYear, primaryMonth]];
 
-  if (mode === "vsMonth") {
-    const cYear = parseInt(el("compareYearSelect").value, 10);
-    const cMonth = parseInt(el("compareMonthSelect").value, 10);
-    return [[targetYear, targetMonth], [cYear, cMonth]];
-  }
+  document.querySelectorAll(".compareCb:checked").forEach((cb) => {
+    const [y, m] = cb.value.split("-").map(Number);
+    combos.push([y, m]);
+  });
 
-  if (mode === "vsYears") {
-    const checked = [...el("yearChecks").querySelectorAll("input:checked")]
-      .map((cb) => parseInt(cb.value, 10))
-      .sort((a, b) => b - a);
-    return checked.map((y) => [y, targetMonth]);
-  }
-
-  return [];
+  return combos;
 }
 
 // ---- Plot ----
@@ -166,11 +181,6 @@ function plot() {
   const hole = el("holeSelect").value;
   const unit = el("unitSelect").value;
   const combos = buildCombos();
-
-  if (combos.length === 0) {
-    setStatus("No year/month combination selected.", true);
-    return;
-  }
 
   const traces = [];
   const skipped = [];
@@ -237,7 +247,9 @@ function setStatus(msg, isError = false) {
 
 el("siteSelect").addEventListener("change", onSiteChange);
 el("holeSelect").addEventListener("change", onHoleChange);
-el("modeSelect").addEventListener("change", onModeChange);
+el("yearSelect").addEventListener("change", onPrimaryChange);
+el("monthSelect").addEventListener("change", onPrimaryChange);
+el("selectAllCompare").addEventListener("change", onSelectAllChange);
 el("plotBtn").addEventListener("click", plot);
 
 loadData();
