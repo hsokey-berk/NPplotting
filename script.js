@@ -71,6 +71,11 @@ function parseDateMDY(str) {
 function populateSiteOptions() {
   sites = [...new Set(rows.map((r) => r.site))].sort();
   fillSelect(el("siteSelect"), sites);
+
+  if (typeof DEFAULT_SITE !== "undefined" && sites.includes(DEFAULT_SITE)) {
+    el("siteSelect").value = DEFAULT_SITE;
+  }
+
   onSiteChange();
 }
 
@@ -91,6 +96,8 @@ function onHoleChange() {
 
   fillSelect(el("yearSelect"), years);
   onPrimaryChange();
+
+  if (rows.length > 0) plot();
 }
 
 function fillSelect(selectEl, values) {
