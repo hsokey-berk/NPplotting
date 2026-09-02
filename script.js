@@ -1,5 +1,8 @@
 // ---- State ----
-let rows = [];               // parsed + typed data rows
+let rows = [];               // parsed + typed data rows (subset of columns, used for plotting)
+let rawRows = [];            // every column, unfiltered — used for "view CSV" tables
+let rawHeaders = [];
+let lastPlottedRawRows = []; // raw rows behind whatever is currently on the graph
 let sites = [];
 let seriesColors = ["#2F6F62", "#B9863E", "#4A6B8A", "#A4552E", "#6B5B8C", "#7A8C4A"];
 
@@ -14,6 +17,9 @@ function loadData() {
     skipEmptyLines: true,
     complete: (results) => {
       try {
+        rawRows = results.data;
+        rawHeaders = results.meta && results.meta.fields ? results.meta.fields : [];
+
         rows = results.data.map(parseRow).filter((r) => r !== null);
         if (rows.length === 0) {
           setStatus("File loaded, but no valid rows were found — check column names match exactly.", true);
@@ -51,7 +57,7 @@ function parseRow(r) {
 
   if (isNaN(cable) || isNaN(neutron)) return null;
 
-  return { site, holeId, date, cableFt: cable, neutron };
+  return { site, holeId, date, cableFt: cable, neutron, raw: r };
 }
 
 // Expect month/day/year, e.g. "8/5/2026" or "08/05/2026"
@@ -205,6 +211,7 @@ function plot() {
 
   const traces = [];
   const skipped = [];
+  const plottedRawRows = [];
 
   combos.forEach(([yr, mo], i) => {
     const subset = rows
@@ -215,6 +222,8 @@ function plot() {
       skipped.push(monthName(mo) + " " + yr);
       return;
     }
+
+    subset.forEach((r) => plottedRawRows.push(r.raw));
 
     const cableVals = subset.map((r) => (unit === "m" ? r.cableFt * 0.3048 : r.cableFt));
     const neutronVals = subset.map((r) => r.neutron);
@@ -255,6 +264,8 @@ function plot() {
 
   Plotly.newPlot("plot", traces, layout, { responsive: true, displaylogo: false });
 
+  lastPlottedRawRows = plottedRawRows;
+
   setStatus(skipped.length ? `No data for: ${skipped.join(", ")}` : "");
 }
 
@@ -269,6 +280,92 @@ function setStatus(msg, isError = false) {
   note.classList.toggle("error", isError);
 }
 
+// ---- CSV-as-sheet modal (paginated, so it stays smooth with 100k+ rows) ----
+
+const PAGE_SIZE = 250;
+let modalDataset = [];
+let modalPage = 0;
+
+function openFullCsvModal() {
+  if (rawRows.length === 0) {
+    setStatus("No data loaded yet — nothing to show.", true);
+    return;
+  }
+  openModal(rawRows, CSV_FILENAME);
+}
+
+function openPlottedCsvModal() {
+  if (lastPlottedRawRows.length === 0) {
+    setStatus("Nothing plotted yet — click Plot first.", true);
+    return;
+  }
+  openModal(lastPlottedRawRows, "Currently plotted rows");
+}
+
+function openModal(dataset, label) {
+  modalDataset = dataset;
+  modalPage = 0;
+  el("csvModalTitle").textContent = label;
+  renderModalPage();
+  el("csvModal").hidden = false;
+}
+
+function closeCsvModal() {
+  el("csvModal").hidden = true;
+}
+
+function renderModalPage() {
+  const total = modalDataset.length;
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  modalPage = Math.min(Math.max(modalPage, 0), totalPages - 1);
+
+  const start = modalPage * PAGE_SIZE;
+  const end = Math.min(start + PAGE_SIZE, total);
+  const pageRows = modalDataset.slice(start, end);
+
+  const headers = rawHeaders.length ? rawHeaders : Object.keys(modalDataset[0] || {});
+
+  const table = el("csvTable");
+  table.innerHTML = "";
+
+  const thead = document.createElement("thead");
+  const headRow = document.createElement("tr");
+  headers.forEach((h) => {
+    const th = document.createElement("th");
+    th.textContent = h;
+    headRow.appendChild(th);
+  });
+  thead.appendChild(headRow);
+  table.appendChild(thead);
+
+  const tbody = document.createElement("tbody");
+  pageRows.forEach((row) => {
+    const tr = document.createElement("tr");
+    headers.forEach((h) => {
+      const td = document.createElement("td");
+      td.textContent = row[h] !== undefined && row[h] !== null ? row[h] : "";
+      tr.appendChild(td);
+    });
+    tbody.appendChild(tr);
+  });
+  table.appendChild(tbody);
+
+  el("csvPageInfo").textContent =
+    total === 0 ? "No rows" : `Rows ${start + 1}\u2013${end} of ${total} \u00b7 page ${modalPage + 1} of ${totalPages}`;
+  el("csvPrevBtn").disabled = modalPage === 0;
+  el("csvNextBtn").disabled = modalPage >= totalPages - 1;
+}
+
+function csvPrevPage() {
+  modalPage -= 1;
+  renderModalPage();
+}
+
+function csvNextPage() {
+  modalPage += 1;
+  renderModalPage();
+}
+
 // ---- Wire up events ----
 
 el("siteSelect").addEventListener("change", onSiteChange);
@@ -277,5 +374,16 @@ el("yearSelect").addEventListener("change", onPrimaryChange);
 el("monthSelect").addEventListener("change", onPrimaryChange);
 el("selectAllCompare").addEventListener("change", onSelectAllChange);
 el("plotBtn").addEventListener("click", plot);
+el("viewFullCsvBtn").addEventListener("click", openFullCsvModal);
+el("viewPlottedCsvBtn").addEventListener("click", openPlottedCsvModal);
+el("closeCsvModal").addEventListener("click", closeCsvModal);
+el("csvPrevBtn").addEventListener("click", csvPrevPage);
+el("csvNextBtn").addEventListener("click", csvNextPage);
+el("csvModal").addEventListener("click", (e) => {
+  if (e.target.id === "csvModal") closeCsvModal();
+});
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && !el("csvModal").hidden) closeCsvModal();
+});
 
 loadData();
