@@ -96,11 +96,25 @@ function onSiteChange() {
 function onHoleChange() {
   const site = el("siteSelect").value;
   const hole = el("holeSelect").value;
-  const years = [...new Set(
-    rows.filter((r) => r.site === site && r.holeId === hole).map((r) => r.date.year)
-  )].sort((a, b) => b - a);
+  const subset = rows.filter((r) => r.site === site && r.holeId === hole);
 
+  const years = [...new Set(subset.map((r) => r.date.year))].sort((a, b) => b - a);
   fillSelect(el("yearSelect"), years);
+
+  // Default to the most recent (year, month) that actually has data,
+  // rather than letting Year default to the newest year but Month
+  // default to January.
+  let latest = null;
+  subset.forEach((r) => {
+    if (!latest || r.date.year > latest.year || (r.date.year === latest.year && r.date.month > latest.month)) {
+      latest = { year: r.date.year, month: r.date.month };
+    }
+  });
+  if (latest) {
+    el("yearSelect").value = latest.year;
+    el("monthSelect").value = latest.month;
+  }
+
   onPrimaryChange();
 
   if (rows.length > 0) plot();
