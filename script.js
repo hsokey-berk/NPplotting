@@ -175,6 +175,7 @@ function renderCompareChecks(combos, prevState = {}) {
     container.appendChild(p);
     el("selectAllCompare").checked = false;
     el("selectAllCompare").disabled = true;
+    renderQuickAddOptions([]);
     return;
   }
 
@@ -192,6 +193,67 @@ function renderCompareChecks(combos, prevState = {}) {
     label.appendChild(document.createTextNode(`${monthName(m)} ${y}`));
     container.appendChild(label);
   });
+
+  renderQuickAddOptions(combos);
+}
+
+// Populate the two "Add all of month/year" dropdowns with only the
+// months/years actually present in the current compare list.
+function renderQuickAddOptions(combos) {
+  const months = [...new Set(combos.map(([, m]) => m))].sort((a, b) => a - b);
+  const years = [...new Set(combos.map(([y]) => y))].sort((a, b) => b - a);
+
+  const monthSel = el("quickAddMonth");
+  monthSel.innerHTML = '<option value="">Add all of month&hellip;</option>';
+  months.forEach((m) => {
+    const opt = document.createElement("option");
+    opt.value = m;
+    opt.textContent = monthName(m);
+    monthSel.appendChild(opt);
+  });
+
+  const yearSel = el("quickAddYear");
+  yearSel.innerHTML = '<option value="">Add all of year&hellip;</option>';
+  years.forEach((y) => {
+    const opt = document.createElement("option");
+    opt.value = y;
+    opt.textContent = y;
+    yearSel.appendChild(opt);
+  });
+}
+
+// Check every compare checkbox whose month matches the chosen value,
+// without unchecking anything already checked. Resets afterward so the
+// dropdown can be reused as a repeatable "quick add" action.
+function onQuickAddMonth() {
+  const month = el("quickAddMonth").value;
+  if (!month) return;
+  document.querySelectorAll(".compareCb").forEach((cb) => {
+    const [, m] = cb.value.split("-").map(Number);
+    if (m === parseInt(month, 10)) cb.checked = true;
+  });
+  el("quickAddMonth").value = "";
+  syncSelectAllState();
+}
+
+function onQuickAddYear() {
+  const year = el("quickAddYear").value;
+  if (!year) return;
+  document.querySelectorAll(".compareCb").forEach((cb) => {
+    const [y] = cb.value.split("-").map(Number);
+    if (y === parseInt(year, 10)) cb.checked = true;
+  });
+  el("quickAddYear").value = "";
+  syncSelectAllState();
+}
+
+// If a quick-add happens to check every remaining box, reflect that in
+// the "select all" checkbox too, so the UI stays consistent.
+function syncSelectAllState() {
+  const boxes = [...document.querySelectorAll(".compareCb")];
+  if (boxes.length > 0) {
+    el("selectAllCompare").checked = boxes.every((cb) => cb.checked);
+  }
 }
 
 function onSelectAllChange() {
@@ -387,6 +449,8 @@ el("holeSelect").addEventListener("change", onHoleChange);
 el("yearSelect").addEventListener("change", onPrimaryChange);
 el("monthSelect").addEventListener("change", onPrimaryChange);
 el("selectAllCompare").addEventListener("change", onSelectAllChange);
+el("quickAddMonth").addEventListener("change", onQuickAddMonth);
+el("quickAddYear").addEventListener("change", onQuickAddYear);
 el("plotBtn").addEventListener("click", plot);
 el("viewFullCsvBtn").addEventListener("click", openFullCsvModal);
 el("viewPlottedCsvBtn").addEventListener("click", openPlottedCsvModal);
