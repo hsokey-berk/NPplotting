@@ -94,28 +94,7 @@ function onSiteChange() {
 }
 
 function onHoleChange() {
-  const site = el("siteSelect").value;
-  const hole = el("holeSelect").value;
-  const subset = rows.filter((r) => r.site === site && r.holeId === hole);
-
-  const years = [...new Set(subset.map((r) => r.date.year))].sort((a, b) => b - a);
-  fillSelect(el("yearSelect"), years);
-
-  // Default to the most recent (year, month) that actually has data,
-  // rather than letting Year default to the newest year but Month
-  // default to January.
-  let latest = null;
-  subset.forEach((r) => {
-    if (!latest || r.date.year > latest.year || (r.date.year === latest.year && r.date.month > latest.month)) {
-      latest = { year: r.date.year, month: r.date.month };
-    }
-  });
-  if (latest) {
-    el("yearSelect").value = latest.year;
-    el("monthSelect").value = latest.month;
-  }
-
-  onPrimaryChange();
+  refreshCompareList();
 
   if (rows.length > 0) plot();
 }
@@ -130,23 +109,23 @@ function fillSelect(selectEl, values) {
   });
 }
 
-// ---- Compare-against state ----
-// allCombos: every (year, month) with data for the current Site + Hole,
-//   excluding whichever (year, month) is the current primary selection.
+// ---- Plot-selection state ----
+// allCombos: every (year, month) with data for the current Site + Hole.
 // checkedCombos: the set of (year, month) values the user has selected
-//   for comparison — persists independently of the month/year filters,
-//   so filtering the list never silently drops a selection.
+//   to plot — persists independently of the month/year filters, so
+//   filtering the list never silently drops a selection.
 let allCombos = [];
 let checkedCombos = new Set();
 
-// Rebuild allCombos for the current Site + Hole ID + primary selection,
-// prune any stale checked entries that no longer exist, refresh the
-// filter dropdown options, and re-render the checkbox list.
-function onPrimaryChange() {
+// Rebuild allCombos for the current Site + Hole ID, prune any stale
+// checked entries that no longer exist, refresh the filter dropdown
+// options, and re-render the checkbox list. If nothing ends up checked
+// (e.g. first load, or a switch to a hole with no carried-over
+// selection), default to the single most recent month so there's always
+// something to plot without extra clicks.
+function refreshCompareList() {
   const site = el("siteSelect").value;
   const hole = el("holeSelect").value;
-  const primaryYear = parseInt(el("yearSelect").value, 10);
-  const primaryMonth = parseInt(el("monthSelect").value, 10);
 
   const combosSet = new Set();
   rows
@@ -155,11 +134,15 @@ function onPrimaryChange() {
 
   allCombos = [...combosSet]
     .map((s) => s.split("-").map(Number))
-    .filter(([y, m]) => !(y === primaryYear && m === primaryMonth))
     .sort((a, b) => (b[0] - a[0]) || (b[1] - a[1]));
 
   const validValues = new Set(allCombos.map(([y, m]) => `${y}-${m}`));
   checkedCombos = new Set([...checkedCombos].filter((v) => validValues.has(v)));
+
+  if (checkedCombos.size === 0 && allCombos.length > 0) {
+    const [y, m] = allCombos[0]; // allCombos is sorted most-recent first
+    checkedCombos.add(`${y}-${m}`);
+  }
 
   renderFilterOptions();
   renderCompareChecks();
@@ -240,6 +223,7 @@ function renderCompareChecks() {
     cb.addEventListener("change", () => {
       if (cb.checked) checkedCombos.add(value);
       else checkedCombos.delete(value);
+      if (rows.length > 0) plot();
     });
     label.appendChild(cb);
     label.appendChild(document.createTextNode(`${monthName(m)} ${y}`));
@@ -256,21 +240,20 @@ function onFilterChange() {
 function selectAllVisible() {
   getVisibleCombos().forEach(([y, m]) => checkedCombos.add(`${y}-${m}`));
   renderCompareChecks();
+  if (rows.length > 0) plot();
 }
 
 // Clears every selection, visible or not.
 function clearAllCompare() {
   checkedCombos.clear();
   renderCompareChecks();
+  if (rows.length > 0) plot();
 }
 
 // ---- Build (year, month) combos to plot ----
 
 function buildCombos() {
-  const primaryYear = parseInt(el("yearSelect").value, 10);
-  const primaryMonth = parseInt(el("monthSelect").value, 10);
-
-  const combos = [[primaryYear, primaryMonth]];
+  const combos = [];
 
   checkedCombos.forEach((value) => {
     const [y, m] = value.split("-").map(Number);
@@ -287,6 +270,12 @@ function plot() {
   const hole = el("holeSelect").value;
   const unit = el("unitSelect").value;
   const combos = buildCombos();
+
+  if (combos.length === 0) {
+    setStatus("Select at least one month to plot.", true);
+    Plotly.purge("plot");
+    return;
+  }
 
   const traces = [];
   const skipped = [];
@@ -449,8 +438,7 @@ function csvNextPage() {
 
 el("siteSelect").addEventListener("change", onSiteChange);
 el("holeSelect").addEventListener("change", onHoleChange);
-el("yearSelect").addEventListener("change", onPrimaryChange);
-el("monthSelect").addEventListener("change", onPrimaryChange);
+el("unitSelect").addEventListener("change", () => { if (rows.length > 0) plot(); });
 el("filterMonth").addEventListener("change", onFilterChange);
 el("filterYear").addEventListener("change", onFilterChange);
 el("selectAllVisibleBtn").addEventListener("click", selectAllVisible);
