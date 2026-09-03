@@ -63,18 +63,19 @@
 
     <div class="field">
       <label>Compare against</label>
-      <label class="selectAll">
-        <input type="checkbox" id="selectAllCompare">
-        Compare against all available
-      </label>
 
-      <div class="quickAddRow">
-        <select id="quickAddMonth">
-          <option value="">Add all of month&hellip;</option>
+      <div class="filterRow">
+        <select id="filterMonth">
+          <option value="">All months</option>
         </select>
-        <select id="quickAddYear">
-          <option value="">Add all of year&hellip;</option>
+        <select id="filterYear">
+          <option value="">All years</option>
         </select>
+      </div>
+
+      <div class="actionRow">
+        <button id="selectAllVisibleBtn" class="smallBtn">Select all</button>
+        <button id="clearCompareBtn" class="smallBtn">Clear</button>
       </div>
 
       <div class="yearChecks" id="compareChecks"></div>
