@@ -1,317 +1,467 @@
-:root {
-  --bg: #EEEFEA;
-  --panel: #FFFFFF;
-  --ink: #1E2624;
-  --ink-soft: #5B655F;
-  --line: #D3D6CC;
-  --accent: #2F6F62;
-  --accent-ink: #FFFFFF;
+// ---- State ----
+let rows = [];               // parsed + typed data rows (subset of columns, used for plotting)
+let rawRows = [];            // every column, unfiltered — used for "view CSV" tables
+let rawHeaders = [];
+let lastPlottedRawRows = []; // raw rows behind whatever is currently on the graph
+let sites = [];
+let seriesColors = ["#2F6F62", "#B9863E", "#4A6B8A", "#A4552E", "#6B5B8C", "#7A8C4A"];
+
+const el = (id) => document.getElementById(id);
+
+// ---- Load & parse CSV ----
+
+function loadData() {
+  Papa.parse(CSV_FILENAME, {
+    download: true,
+    header: true,
+    skipEmptyLines: true,
+    complete: (results) => {
+      try {
+        rawRows = results.data;
+        rawHeaders = results.meta && results.meta.fields ? results.meta.fields : [];
+
+        rows = results.data.map(parseRow).filter((r) => r !== null);
+        if (rows.length === 0) {
+          setStatus("File loaded, but no valid rows were found — check column names match exactly.", true);
+          return;
+        }
+        populateSiteOptions();
+        el("syncStatus").textContent = `Loaded ${rows.length} rows from ${CSV_FILENAME}`;
+        setStatus("");
+      } catch (e) {
+        setStatus("Error parsing " + CSV_FILENAME + ": " + e.message, true);
+      }
+    },
+    error: (err) => {
+      setStatus(`Could not load ${CSV_FILENAME}. Check that it's in the same folder as index.html, and that CSV_FILENAME in config.js matches the exact filename.`, true);
+      console.error(err);
+    }
+  });
 }
 
-* { box-sizing: border-box; }
+function parseRow(r) {
+  const site = (r["Site"] || "").trim();
+  const holeIdRaw = r["Hole ID"];
+  const dateRaw = (r["Date"] || "").trim();
+  const cableRaw = r["Cable length (ft)"];
+  const neutronRaw = r["Neutron Count (MD)"];
 
-body {
-  margin: 0;
-  background: var(--bg);
-  color: var(--ink);
-  font-family: 'IBM Plex Sans', system-ui, sans-serif;
-  font-size: 15px;
-  line-height: 1.45;
+  if (!site || !dateRaw || cableRaw === undefined || neutronRaw === undefined) return null;
+
+  const date = parseDateMDY(dateRaw);
+  if (!date) return null;
+
+  const cable = parseFloat(cableRaw);
+  const neutron = parseFloat(neutronRaw);
+  const holeId = holeIdRaw !== undefined ? holeIdRaw.trim() : "";
+
+  if (isNaN(cable) || isNaN(neutron)) return null;
+
+  return { site, holeId, date, cableFt: cable, neutron, raw: r };
 }
 
-.frame {
-  display: grid;
-  grid-template-columns: 320px 1fr;
-  min-height: 100vh;
+// Expect month/day/year, e.g. "8/5/2026" or "08/05/2026"
+function parseDateMDY(str) {
+  const parts = str.split(/[\/\-]/);
+  if (parts.length !== 3) return null;
+  const month = parseInt(parts[0], 10);
+  const day = parseInt(parts[1], 10);
+  let year = parseInt(parts[2], 10);
+  if (year < 100) year += 2000;
+  if (!month || !day || !year || month > 12 || day > 31) return null;
+  return { year, month, day };
 }
 
-/* ---- Sidebar ---- */
+// ---- Populate dropdowns from data ----
 
-.rail {
-  background: var(--panel);
-  border-right: 1px solid var(--line);
-  padding: 28px 24px 32px;
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
+function populateSiteOptions() {
+  sites = [...new Set(rows.map((r) => r.site))].sort();
+  fillSelect(el("siteSelect"), sites);
+
+  if (typeof DEFAULT_SITE !== "undefined" && sites.includes(DEFAULT_SITE)) {
+    el("siteSelect").value = DEFAULT_SITE;
+  }
+
+  onSiteChange();
 }
 
-.rail__header {
-  margin-bottom: 8px;
+function onSiteChange() {
+  const site = el("siteSelect").value;
+  const holes = [...new Set(rows.filter((r) => r.site === site).map((r) => r.holeId))]
+    .sort((a, b) => (isNaN(a) || isNaN(b) ? a.localeCompare(b) : a - b));
+  fillSelect(el("holeSelect"), holes);
+  onHoleChange();
 }
 
-.rail__header h1 {
-  font-size: 19px;
-  font-weight: 600;
-  margin: 0 0 6px;
-  letter-spacing: -0.01em;
+function onHoleChange() {
+  const site = el("siteSelect").value;
+  const hole = el("holeSelect").value;
+  const subset = rows.filter((r) => r.site === site && r.holeId === hole);
+
+  const years = [...new Set(subset.map((r) => r.date.year))].sort((a, b) => b - a);
+  fillSelect(el("yearSelect"), years);
+
+  // Default to the most recent (year, month) that actually has data,
+  // rather than letting Year default to the newest year but Month
+  // default to January.
+  let latest = null;
+  subset.forEach((r) => {
+    if (!latest || r.date.year > latest.year || (r.date.year === latest.year && r.date.month > latest.month)) {
+      latest = { year: r.date.year, month: r.date.month };
+    }
+  });
+  if (latest) {
+    el("yearSelect").value = latest.year;
+    el("monthSelect").value = latest.month;
+  }
+
+  onPrimaryChange();
+
+  if (rows.length > 0) plot();
 }
 
-.sync {
-  font-family: 'IBM Plex Mono', monospace;
-  font-size: 12px;
-  color: var(--ink-soft);
-  margin: 0;
+function fillSelect(selectEl, values) {
+  selectEl.innerHTML = "";
+  values.forEach((v) => {
+    const opt = document.createElement("option");
+    opt.value = v;
+    opt.textContent = v;
+    selectEl.appendChild(opt);
+  });
 }
 
-.field {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  padding-bottom: 12px;
-  border-bottom: 1px solid var(--line);
+// Rebuild the "compare against" checkbox list: every (year, month) that
+// actually has data for the chosen Site + Hole ID, excluding whichever
+// (year, month) is currently selected as the primary series.
+//
+// Preserves the previous checked state across rebuilds (e.g. switching
+// Hole ID): if "select all" was checked, the new list is fully checked
+// too; otherwise, any individually-checked month/year is re-checked only
+// if it still exists for the new selection — if it doesn't, it's simply
+// not offered (which is the "unchecks if no data available" behavior).
+function onPrimaryChange() {
+  const site = el("siteSelect").value;
+  const hole = el("holeSelect").value;
+  const primaryYear = parseInt(el("yearSelect").value, 10);
+  const primaryMonth = parseInt(el("monthSelect").value, 10);
+
+  const wasSelectAll = el("selectAllCompare").checked;
+  const previouslyChecked = new Set(
+    [...document.querySelectorAll(".compareCb:checked")].map((cb) => cb.value)
+  );
+
+  const combosSet = new Set();
+  rows
+    .filter((r) => r.site === site && r.holeId === hole)
+    .forEach((r) => combosSet.add(r.date.year + "-" + r.date.month));
+
+  const combos = [...combosSet]
+    .map((s) => s.split("-").map(Number))
+    .filter(([y, m]) => !(y === primaryYear && m === primaryMonth))
+    .sort((a, b) => (b[0] - a[0]) || (b[1] - a[1]));
+
+  renderCompareChecks(combos, { wasSelectAll, previouslyChecked });
 }
 
-.field--sub {
-  padding-left: 12px;
-  border-left: 2px solid var(--line);
-  border-bottom: none;
-  margin-top: -4px;
+function renderCompareChecks(combos, prevState = {}) {
+  const { wasSelectAll = false, previouslyChecked = new Set() } = prevState;
+  const container = el("compareChecks");
+  container.innerHTML = "";
+
+  if (combos.length === 0) {
+    const p = document.createElement("p");
+    p.className = "empty";
+    p.textContent = "No other months available for this hole.";
+    container.appendChild(p);
+    el("selectAllCompare").checked = false;
+    el("selectAllCompare").disabled = true;
+    renderQuickAddOptions([]);
+    return;
+  }
+
+  el("selectAllCompare").disabled = false;
+  el("selectAllCompare").checked = wasSelectAll;
+
+  combos.forEach(([y, m]) => {
+    const label = document.createElement("label");
+    const cb = document.createElement("input");
+    cb.type = "checkbox";
+    cb.value = `${y}-${m}`;
+    cb.className = "compareCb";
+    cb.checked = wasSelectAll || previouslyChecked.has(cb.value);
+    label.appendChild(cb);
+    label.appendChild(document.createTextNode(`${monthName(m)} ${y}`));
+    container.appendChild(label);
+  });
+
+  renderQuickAddOptions(combos);
 }
 
-.field label {
-  font-size: 12.5px;
-  font-weight: 500;
-  color: var(--ink-soft);
-  text-transform: none;
+// Populate the two "Add all of month/year" dropdowns with only the
+// months/years actually present in the current compare list.
+function renderQuickAddOptions(combos) {
+  const months = [...new Set(combos.map(([, m]) => m))].sort((a, b) => a - b);
+  const years = [...new Set(combos.map(([y]) => y))].sort((a, b) => b - a);
+
+  const monthSel = el("quickAddMonth");
+  monthSel.innerHTML = '<option value="">Add all of month&hellip;</option>';
+  months.forEach((m) => {
+    const opt = document.createElement("option");
+    opt.value = m;
+    opt.textContent = monthName(m);
+    monthSel.appendChild(opt);
+  });
+
+  const yearSel = el("quickAddYear");
+  yearSel.innerHTML = '<option value="">Add all of year&hellip;</option>';
+  years.forEach((y) => {
+    const opt = document.createElement("option");
+    opt.value = y;
+    opt.textContent = y;
+    yearSel.appendChild(opt);
+  });
 }
 
-select {
-  font-family: inherit;
-  font-size: 14.5px;
-  color: var(--ink);
-  background: var(--bg);
-  border: 1px solid var(--line);
-  border-radius: 3px;
-  padding: 7px 8px;
-  appearance: none;
-  background-image: linear-gradient(45deg, transparent 50%, var(--ink-soft) 50%), linear-gradient(135deg, var(--ink-soft) 50%, transparent 50%);
-  background-position: calc(100% - 16px) center, calc(100% - 11px) center;
-  background-size: 5px 5px, 5px 5px;
-  background-repeat: no-repeat;
+// Check every compare checkbox whose month matches the chosen value,
+// without unchecking anything already checked. Resets afterward so the
+// dropdown can be reused as a repeatable "quick add" action.
+function onQuickAddMonth() {
+  const month = el("quickAddMonth").value;
+  if (!month) return;
+  document.querySelectorAll(".compareCb").forEach((cb) => {
+    const [, m] = cb.value.split("-").map(Number);
+    if (m === parseInt(month, 10)) cb.checked = true;
+  });
+  el("quickAddMonth").value = "";
+  syncSelectAllState();
 }
 
-select:focus, .plotBtn:focus, input:focus {
-  outline: 2px solid var(--accent);
-  outline-offset: 1px;
+function onQuickAddYear() {
+  const year = el("quickAddYear").value;
+  if (!year) return;
+  document.querySelectorAll(".compareCb").forEach((cb) => {
+    const [y] = cb.value.split("-").map(Number);
+    if (y === parseInt(year, 10)) cb.checked = true;
+  });
+  el("quickAddYear").value = "";
+  syncSelectAllState();
 }
 
-.rule {
-  border: none;
-  border-top: 1px solid var(--line);
-  margin: 4px 0;
+// If a quick-add happens to check every remaining box, reflect that in
+// the "select all" checkbox too, so the UI stays consistent.
+function syncSelectAllState() {
+  const boxes = [...document.querySelectorAll(".compareCb")];
+  if (boxes.length > 0) {
+    el("selectAllCompare").checked = boxes.every((cb) => cb.checked);
+  }
 }
 
-.selectAll {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 13.5px;
-  font-weight: 500;
-  color: var(--ink);
-  cursor: pointer;
-  margin: 2px 0 4px;
+function onSelectAllChange() {
+  const checked = el("selectAllCompare").checked;
+  document.querySelectorAll(".compareCb").forEach((cb) => (cb.checked = checked));
 }
 
-.yearChecks {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  font-family: 'IBM Plex Mono', monospace;
-  font-size: 13.5px;
-  max-height: 220px;
-  overflow-y: auto;
-  padding-right: 4px;
+// ---- Build (year, month) combos to plot ----
+
+function buildCombos() {
+  const primaryYear = parseInt(el("yearSelect").value, 10);
+  const primaryMonth = parseInt(el("monthSelect").value, 10);
+
+  const combos = [[primaryYear, primaryMonth]];
+
+  document.querySelectorAll(".compareCb:checked").forEach((cb) => {
+    const [y, m] = cb.value.split("-").map(Number);
+    combos.push([y, m]);
+  });
+
+  return combos;
 }
 
-.yearChecks label {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  color: var(--ink);
-  font-weight: 400;
-  cursor: pointer;
+// ---- Plot ----
+
+function plot() {
+  const site = el("siteSelect").value;
+  const hole = el("holeSelect").value;
+  const unit = el("unitSelect").value;
+  const combos = buildCombos();
+
+  const traces = [];
+  const skipped = [];
+  const plottedRawRows = [];
+
+  combos.forEach(([yr, mo], i) => {
+    const subset = rows
+      .filter((r) => r.site === site && r.holeId === hole && r.date.year === yr && r.date.month === mo)
+      .sort((a, b) => a.cableFt - b.cableFt);
+
+    if (subset.length === 0) {
+      skipped.push(monthName(mo) + " " + yr);
+      return;
+    }
+
+    subset.forEach((r) => plottedRawRows.push(r.raw));
+
+    const cableVals = subset.map((r) => (unit === "m" ? r.cableFt * 0.3048 : r.cableFt));
+    const neutronVals = subset.map((r) => r.neutron);
+
+    traces.push({
+      x: neutronVals,
+      y: cableVals,
+      mode: "lines+markers",
+      name: monthName(mo) + " " + yr,
+      line: { color: seriesColors[i % seriesColors.length], width: 2 },
+      marker: { size: 6 }
+    });
+  });
+
+  if (traces.length === 0) {
+    setStatus("No data found for that Site / Hole ID / date selection.", true);
+    Plotly.purge("plot");
+    return;
+  }
+
+  const unitLabel = unit === "m" ? "Cable length (m)" : "Cable length (ft)";
+
+  const layout = {
+    title: {
+      text: `${site} \u2014 Hole ${hole} \u2014 Neutron Count vs Cable Length`,
+      font: { family: "IBM Plex Sans", size: 16 },
+      y: 0.98,
+      yanchor: "top"
+    },
+    xaxis: { title: { text: "Neutron Count (MD)", standoff: 8 }, side: "top" },
+    yaxis: { title: unitLabel, autorange: "reversed" },
+    font: { family: "IBM Plex Sans", color: "#1E2624" },
+    plot_bgcolor: "#FFFFFF",
+    paper_bgcolor: "#FFFFFF",
+    margin: { t: 100, r: 30, l: 60, b: 40 },
+    legend: { orientation: "h", y: -0.12 }
+  };
+
+  Plotly.newPlot("plot", traces, layout, { responsive: true, displaylogo: false });
+
+  lastPlottedRawRows = plottedRawRows;
+
+  setStatus(skipped.length ? `No data for: ${skipped.join(", ")}` : "");
 }
 
-.yearChecks .empty {
-  color: var(--ink-soft);
-  font-family: 'IBM Plex Sans', sans-serif;
-  font-style: italic;
+function monthName(m) {
+  return ["", "January", "February", "March", "April", "May", "June",
+    "July", "August", "September", "October", "November", "December"][m];
 }
 
-.plotBtn {
-  margin-top: 8px;
-  background: var(--accent);
-  color: var(--accent-ink);
-  border: none;
-  border-radius: 3px;
-  padding: 11px 14px;
-  font-family: inherit;
-  font-size: 14.5px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: background 0.15s ease;
+function setStatus(msg, isError = false) {
+  const note = el("statusNote");
+  note.textContent = msg;
+  note.classList.toggle("error", isError);
 }
 
-.plotBtn:hover { background: #26594E; }
+// ---- CSV-as-sheet modal (paginated, so it stays smooth with 100k+ rows) ----
 
-.ghostBtn {
-  margin-top: -2px;
-  background: transparent;
-  color: var(--accent);
-  border: 1px solid var(--line);
-  border-radius: 3px;
-  padding: 9px 14px;
-  font-family: inherit;
-  font-size: 13.5px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: border-color 0.15s ease, background 0.15s ease;
+const PAGE_SIZE = 250;
+let modalDataset = [];
+let modalPage = 0;
+
+function openFullCsvModal() {
+  if (rawRows.length === 0) {
+    setStatus("No data loaded yet — nothing to show.", true);
+    return;
+  }
+  openModal(rawRows, CSV_FILENAME);
 }
 
-.ghostBtn:hover {
-  border-color: var(--accent);
-  background: #F4F6F3;
+function openPlottedCsvModal() {
+  if (lastPlottedRawRows.length === 0) {
+    setStatus("Nothing plotted yet — click Plot first.", true);
+    return;
+  }
+  openModal(lastPlottedRawRows, "Currently plotted rows");
 }
 
-/* ---- CSV modal ---- */
-
-.modal {
-  position: fixed;
-  inset: 0;
-  background: rgba(30, 38, 36, 0.45);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 32px;
-  z-index: 50;
+function openModal(dataset, label) {
+  modalDataset = dataset;
+  modalPage = 0;
+  el("csvModalTitle").textContent = label;
+  renderModalPage();
+  el("csvModal").hidden = false;
 }
 
-.modal[hidden] { display: none; }
-
-.modal__panel {
-  background: var(--panel);
-  border-radius: 4px;
-  width: 100%;
-  max-width: 1100px;
-  max-height: 85vh;
-  display: flex;
-  flex-direction: column;
-  box-shadow: 0 8px 30px rgba(0,0,0,0.2);
+function closeCsvModal() {
+  el("csvModal").hidden = true;
 }
 
-.modal__header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 14px 18px;
-  border-bottom: 1px solid var(--line);
-  font-weight: 600;
-  font-size: 14.5px;
+function renderModalPage() {
+  const total = modalDataset.length;
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  modalPage = Math.min(Math.max(modalPage, 0), totalPages - 1);
+
+  const start = modalPage * PAGE_SIZE;
+  const end = Math.min(start + PAGE_SIZE, total);
+  const pageRows = modalDataset.slice(start, end);
+
+  const headers = rawHeaders.length ? rawHeaders : Object.keys(modalDataset[0] || {});
+
+  const table = el("csvTable");
+  table.innerHTML = "";
+
+  const thead = document.createElement("thead");
+  const headRow = document.createElement("tr");
+  headers.forEach((h) => {
+    const th = document.createElement("th");
+    th.textContent = h;
+    headRow.appendChild(th);
+  });
+  thead.appendChild(headRow);
+  table.appendChild(thead);
+
+  const tbody = document.createElement("tbody");
+  pageRows.forEach((row) => {
+    const tr = document.createElement("tr");
+    headers.forEach((h) => {
+      const td = document.createElement("td");
+      td.textContent = row[h] !== undefined && row[h] !== null ? row[h] : "";
+      tr.appendChild(td);
+    });
+    tbody.appendChild(tr);
+  });
+  table.appendChild(tbody);
+
+  el("csvPageInfo").textContent =
+    total === 0 ? "No rows" : `Rows ${start + 1}\u2013${end} of ${total} \u00b7 page ${modalPage + 1} of ${totalPages}`;
+  el("csvPrevBtn").disabled = modalPage === 0;
+  el("csvNextBtn").disabled = modalPage >= totalPages - 1;
 }
 
-.modal__close {
-  background: none;
-  border: none;
-  font-size: 22px;
-  line-height: 1;
-  color: var(--ink-soft);
-  cursor: pointer;
-  padding: 2px 6px;
+function csvPrevPage() {
+  modalPage -= 1;
+  renderModalPage();
 }
 
-.modal__close:hover { color: var(--ink); }
-
-.modal__scroll {
-  overflow: auto;
-  padding: 0 18px;
-  flex: 1;
+function csvNextPage() {
+  modalPage += 1;
+  renderModalPage();
 }
 
-.modal__footer {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 16px;
-  padding: 12px 18px;
-  border-top: 1px solid var(--line);
-}
+// ---- Wire up events ----
 
-.pageBtn {
-  background: var(--bg);
-  border: 1px solid var(--line);
-  border-radius: 3px;
-  padding: 7px 12px;
-  font-family: inherit;
-  font-size: 13px;
-  font-weight: 500;
-  color: var(--ink);
-  cursor: pointer;
-}
+el("siteSelect").addEventListener("change", onSiteChange);
+el("holeSelect").addEventListener("change", onHoleChange);
+el("yearSelect").addEventListener("change", onPrimaryChange);
+el("monthSelect").addEventListener("change", onPrimaryChange);
+el("selectAllCompare").addEventListener("change", onSelectAllChange);
+el("quickAddMonth").addEventListener("change", onQuickAddMonth);
+el("quickAddYear").addEventListener("change", onQuickAddYear);
+el("plotBtn").addEventListener("click", plot);
+el("viewFullCsvBtn").addEventListener("click", openFullCsvModal);
+el("viewPlottedCsvBtn").addEventListener("click", openPlottedCsvModal);
+el("closeCsvModal").addEventListener("click", closeCsvModal);
+el("csvPrevBtn").addEventListener("click", csvPrevPage);
+el("csvNextBtn").addEventListener("click", csvNextPage);
+el("csvModal").addEventListener("click", (e) => {
+  if (e.target.id === "csvModal") closeCsvModal();
+});
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && !el("csvModal").hidden) closeCsvModal();
+});
 
-.pageBtn:hover:not(:disabled) { border-color: var(--accent); }
-.pageBtn:disabled { opacity: 0.4; cursor: default; }
-
-.pageInfo {
-  font-family: 'IBM Plex Mono', monospace;
-  font-size: 12.5px;
-  color: var(--ink-soft);
-}
-
-#csvTable {
-  border-collapse: collapse;
-  font-family: 'IBM Plex Mono', monospace;
-  font-size: 12.5px;
-  white-space: nowrap;
-}
-
-#csvTable th, #csvTable td {
-  padding: 6px 12px;
-  border-bottom: 1px solid var(--line);
-  text-align: left;
-}
-
-#csvTable th {
-  position: sticky;
-  top: 0;
-  background: var(--panel);
-  font-family: 'IBM Plex Sans', sans-serif;
-  font-weight: 600;
-  color: var(--ink-soft);
-  font-size: 12px;
-  border-bottom: 2px solid var(--line);
-}
-
-#csvTable tr:nth-child(even) td {
-  background: #FAFAF7;
-}
-
-.note {
-  font-size: 12.5px;
-  color: var(--ink-soft);
-  min-height: 1.4em;
-  margin: 0;
-}
-
-.note.error { color: #A4552E; }
-
-/* ---- Plot stage ---- */
-
-.stage {
-  padding: 28px;
-  display: flex;
-}
-
-.plot {
-  flex: 1;
-  background: var(--panel);
-  border: 1px solid var(--line);
-  border-radius: 4px;
-  min-height: 560px;
-}
-
-@media (max-width: 800px) {
-  .frame { grid-template-columns: 1fr; }
-  .rail { border-right: none; border-bottom: 1px solid var(--line); }
-  .stage { padding: 16px; }
-}
+loadData();
