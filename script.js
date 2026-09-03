@@ -130,135 +130,138 @@ function fillSelect(selectEl, values) {
   });
 }
 
-// Rebuild the "compare against" checkbox list: every (year, month) that
-// actually has data for the chosen Site + Hole ID, excluding whichever
-// (year, month) is currently selected as the primary series.
-//
-// Preserves the previous checked state across rebuilds (e.g. switching
-// Hole ID): if "select all" was checked, the new list is fully checked
-// too; otherwise, any individually-checked month/year is re-checked only
-// if it still exists for the new selection — if it doesn't, it's simply
-// not offered (which is the "unchecks if no data available" behavior).
+// ---- Compare-against state ----
+// allCombos: every (year, month) with data for the current Site + Hole,
+//   excluding whichever (year, month) is the current primary selection.
+// checkedCombos: the set of (year, month) values the user has selected
+//   for comparison — persists independently of the month/year filters,
+//   so filtering the list never silently drops a selection.
+let allCombos = [];
+let checkedCombos = new Set();
+
+// Rebuild allCombos for the current Site + Hole ID + primary selection,
+// prune any stale checked entries that no longer exist, refresh the
+// filter dropdown options, and re-render the checkbox list.
 function onPrimaryChange() {
   const site = el("siteSelect").value;
   const hole = el("holeSelect").value;
   const primaryYear = parseInt(el("yearSelect").value, 10);
   const primaryMonth = parseInt(el("monthSelect").value, 10);
 
-  const wasSelectAll = el("selectAllCompare").checked;
-  const previouslyChecked = new Set(
-    [...document.querySelectorAll(".compareCb:checked")].map((cb) => cb.value)
-  );
-
   const combosSet = new Set();
   rows
     .filter((r) => r.site === site && r.holeId === hole)
     .forEach((r) => combosSet.add(r.date.year + "-" + r.date.month));
 
-  const combos = [...combosSet]
+  allCombos = [...combosSet]
     .map((s) => s.split("-").map(Number))
     .filter(([y, m]) => !(y === primaryYear && m === primaryMonth))
     .sort((a, b) => (b[0] - a[0]) || (b[1] - a[1]));
 
-  renderCompareChecks(combos, { wasSelectAll, previouslyChecked });
+  const validValues = new Set(allCombos.map(([y, m]) => `${y}-${m}`));
+  checkedCombos = new Set([...checkedCombos].filter((v) => validValues.has(v)));
+
+  renderFilterOptions();
+  renderCompareChecks();
 }
 
-function renderCompareChecks(combos, prevState = {}) {
-  const { wasSelectAll = false, previouslyChecked = new Set() } = prevState;
-  const container = el("compareChecks");
-  container.innerHTML = "";
+// Populate the two filter dropdowns with only the months/years actually
+// present in allCombos, keeping the current selection if it's still valid.
+function renderFilterOptions() {
+  const months = [...new Set(allCombos.map(([, m]) => m))].sort((a, b) => a - b);
+  const years = [...new Set(allCombos.map(([y]) => y))].sort((a, b) => b - a);
 
-  if (combos.length === 0) {
-    const p = document.createElement("p");
-    p.className = "empty";
-    p.textContent = "No other months available for this hole.";
-    container.appendChild(p);
-    el("selectAllCompare").checked = false;
-    el("selectAllCompare").disabled = true;
-    renderQuickAddOptions([]);
-    return;
-  }
-
-  el("selectAllCompare").disabled = false;
-  el("selectAllCompare").checked = wasSelectAll;
-
-  combos.forEach(([y, m]) => {
-    const label = document.createElement("label");
-    const cb = document.createElement("input");
-    cb.type = "checkbox";
-    cb.value = `${y}-${m}`;
-    cb.className = "compareCb";
-    cb.checked = wasSelectAll || previouslyChecked.has(cb.value);
-    label.appendChild(cb);
-    label.appendChild(document.createTextNode(`${monthName(m)} ${y}`));
-    container.appendChild(label);
-  });
-
-  renderQuickAddOptions(combos);
-}
-
-// Populate the two "Add all of month/year" dropdowns with only the
-// months/years actually present in the current compare list.
-function renderQuickAddOptions(combos) {
-  const months = [...new Set(combos.map(([, m]) => m))].sort((a, b) => a - b);
-  const years = [...new Set(combos.map(([y]) => y))].sort((a, b) => b - a);
-
-  const monthSel = el("quickAddMonth");
-  monthSel.innerHTML = '<option value="">Add all of month&hellip;</option>';
+  const monthSel = el("filterMonth");
+  const prevMonth = monthSel.value;
+  monthSel.innerHTML = '<option value="">All months</option>';
   months.forEach((m) => {
     const opt = document.createElement("option");
     opt.value = m;
     opt.textContent = monthName(m);
     monthSel.appendChild(opt);
   });
+  if ([...monthSel.options].some((o) => o.value === prevMonth)) monthSel.value = prevMonth;
 
-  const yearSel = el("quickAddYear");
-  yearSel.innerHTML = '<option value="">Add all of year&hellip;</option>';
+  const yearSel = el("filterYear");
+  const prevYear = yearSel.value;
+  yearSel.innerHTML = '<option value="">All years</option>';
   years.forEach((y) => {
     const opt = document.createElement("option");
     opt.value = y;
     opt.textContent = y;
     yearSel.appendChild(opt);
   });
+  if ([...yearSel.options].some((o) => o.value === prevYear)) yearSel.value = prevYear;
 }
 
-// Check every compare checkbox whose month matches the chosen value,
-// without unchecking anything already checked. Resets afterward so the
-// dropdown can be reused as a repeatable "quick add" action.
-function onQuickAddMonth() {
-  const month = el("quickAddMonth").value;
-  if (!month) return;
-  document.querySelectorAll(".compareCb").forEach((cb) => {
-    const [, m] = cb.value.split("-").map(Number);
-    if (m === parseInt(month, 10)) cb.checked = true;
+function getVisibleCombos() {
+  const monthFilter = el("filterMonth").value;
+  const yearFilter = el("filterYear").value;
+  return allCombos.filter(([y, m]) => {
+    if (monthFilter && m !== parseInt(monthFilter, 10)) return false;
+    if (yearFilter && y !== parseInt(yearFilter, 10)) return false;
+    return true;
   });
-  el("quickAddMonth").value = "";
-  syncSelectAllState();
 }
 
-function onQuickAddYear() {
-  const year = el("quickAddYear").value;
-  if (!year) return;
-  document.querySelectorAll(".compareCb").forEach((cb) => {
-    const [y] = cb.value.split("-").map(Number);
-    if (y === parseInt(year, 10)) cb.checked = true;
-  });
-  el("quickAddYear").value = "";
-  syncSelectAllState();
-}
+// Renders only the currently visible (filtered) combos as checkboxes.
+// checkedCombos itself is untouched by filtering — a checked box that
+// scrolls out of view under a filter stays checked, it just isn't shown.
+function renderCompareChecks() {
+  const container = el("compareChecks");
+  container.innerHTML = "";
 
-// If a quick-add happens to check every remaining box, reflect that in
-// the "select all" checkbox too, so the UI stays consistent.
-function syncSelectAllState() {
-  const boxes = [...document.querySelectorAll(".compareCb")];
-  if (boxes.length > 0) {
-    el("selectAllCompare").checked = boxes.every((cb) => cb.checked);
+  if (allCombos.length === 0) {
+    const p = document.createElement("p");
+    p.className = "empty";
+    p.textContent = "No other months available for this hole.";
+    container.appendChild(p);
+    return;
   }
+
+  const visible = getVisibleCombos();
+
+  if (visible.length === 0) {
+    const p = document.createElement("p");
+    p.className = "empty";
+    p.textContent = "No months match this filter.";
+    container.appendChild(p);
+    return;
+  }
+
+  visible.forEach(([y, m]) => {
+    const value = `${y}-${m}`;
+    const label = document.createElement("label");
+    const cb = document.createElement("input");
+    cb.type = "checkbox";
+    cb.value = value;
+    cb.className = "compareCb";
+    cb.checked = checkedCombos.has(value);
+    cb.addEventListener("change", () => {
+      if (cb.checked) checkedCombos.add(value);
+      else checkedCombos.delete(value);
+    });
+    label.appendChild(cb);
+    label.appendChild(document.createTextNode(`${monthName(m)} ${y}`));
+    container.appendChild(label);
+  });
 }
 
-function onSelectAllChange() {
-  const checked = el("selectAllCompare").checked;
-  document.querySelectorAll(".compareCb").forEach((cb) => (cb.checked = checked));
+function onFilterChange() {
+  renderCompareChecks();
+}
+
+// Selects every combo currently visible under the filter — doesn't touch
+// selections that are hidden by the filter.
+function selectAllVisible() {
+  getVisibleCombos().forEach(([y, m]) => checkedCombos.add(`${y}-${m}`));
+  renderCompareChecks();
+}
+
+// Clears every selection, visible or not.
+function clearAllCompare() {
+  checkedCombos.clear();
+  renderCompareChecks();
 }
 
 // ---- Build (year, month) combos to plot ----
@@ -269,8 +272,8 @@ function buildCombos() {
 
   const combos = [[primaryYear, primaryMonth]];
 
-  document.querySelectorAll(".compareCb:checked").forEach((cb) => {
-    const [y, m] = cb.value.split("-").map(Number);
+  checkedCombos.forEach((value) => {
+    const [y, m] = value.split("-").map(Number);
     combos.push([y, m]);
   });
 
@@ -448,9 +451,10 @@ el("siteSelect").addEventListener("change", onSiteChange);
 el("holeSelect").addEventListener("change", onHoleChange);
 el("yearSelect").addEventListener("change", onPrimaryChange);
 el("monthSelect").addEventListener("change", onPrimaryChange);
-el("selectAllCompare").addEventListener("change", onSelectAllChange);
-el("quickAddMonth").addEventListener("change", onQuickAddMonth);
-el("quickAddYear").addEventListener("change", onQuickAddYear);
+el("filterMonth").addEventListener("change", onFilterChange);
+el("filterYear").addEventListener("change", onFilterChange);
+el("selectAllVisibleBtn").addEventListener("click", selectAllVisible);
+el("clearCompareBtn").addEventListener("click", clearAllCompare);
 el("plotBtn").addEventListener("click", plot);
 el("viewFullCsvBtn").addEventListener("click", openFullCsvModal);
 el("viewPlottedCsvBtn").addEventListener("click", openPlottedCsvModal);
