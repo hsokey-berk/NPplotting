@@ -60,13 +60,27 @@ function parseRow(r) {
   return { site, holeId, date, cableFt: cable, neutron, raw: r };
 }
 
-// Expect month/day/year, e.g. "8/5/2026" or "08/05/2026"
+// Handles both M/D/YYYY (old) and YYYY-MM-DD (new)
 function parseDateMDY(str) {
+  if (!str) return null;
+
+  // Try YYYY-MM-DD first
+  const isoMatch = str.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (isoMatch) {
+    const year  = parseInt(isoMatch[1], 10);
+    const month = parseInt(isoMatch[2], 10);
+    const day   = parseInt(isoMatch[3], 10);
+    if (month >= 1 && month <= 12 && day >= 1 && day <= 31)
+      return { year, month, day };
+    return null;
+  }
+
+  // Fall back to M/D/YYYY or M-D-YYYY (old format)
   const parts = str.split(/[\/\-]/);
   if (parts.length !== 3) return null;
   const month = parseInt(parts[0], 10);
-  const day = parseInt(parts[1], 10);
-  let year = parseInt(parts[2], 10);
+  const day   = parseInt(parts[1], 10);
+  let   year  = parseInt(parts[2], 10);
   if (year < 100) year += 2000;
   if (!month || !day || !year || month > 12 || day > 31) return null;
   return { year, month, day };
