@@ -269,6 +269,7 @@ function plot() {
   const site = el("siteSelect").value;
   const hole = el("holeSelect").value;
   const unit = el("unitSelect").value;
+  const countUnit = el("countUnitSelect").value;
   const combos = buildCombos();
 
   if (combos.length === 0) {
@@ -294,10 +295,12 @@ function plot() {
     subset.forEach((r) => plottedRawRows.push(r.raw));
 
     const cableVals = subset.map((r) => (unit === "m" ? r.cableFt * 0.3048 : r.cableFt));
-    const neutronVals = subset.map((r) => r.neutron);
+    const countVals = subset.map((r) =>
+      countUnit === "theta" ? THETA_SLOPE * r.neutron + THETA_INTERCEPT : r.neutron
+    );
 
     traces.push({
-      x: neutronVals,
+      x: countVals,
       y: cableVals,
       mode: "lines+markers",
       name: monthName(mo) + " " + yr,
@@ -313,15 +316,16 @@ function plot() {
   }
 
   const unitLabel = unit === "m" ? "Cable length (m)" : "Cable length (ft)";
+  const countLabel = countUnit === "theta" ? "Theta" : "Neutron Count (MD)";
 
   const layout = {
     title: {
-      text: `${site} \u2014 Hole ${hole} \u2014 Neutron Count vs Cable Length`,
+      text: `${site} \u2014 Hole ${hole} \u2014 ${countLabel} vs Cable Length`,
       font: { family: "IBM Plex Sans", size: 16 },
       y: 0.98,
       yanchor: "top"
     },
-    xaxis: { title: { text: "Neutron Count (MD)", standoff: 8 }, side: "top" },
+    xaxis: { title: { text: countLabel, standoff: 8 }, side: "top" },
     yaxis: { title: unitLabel, autorange: "reversed" },
     font: { family: "IBM Plex Sans", color: "#1E2624" },
     plot_bgcolor: "#FFFFFF",
@@ -439,6 +443,7 @@ function csvNextPage() {
 el("siteSelect").addEventListener("change", onSiteChange);
 el("holeSelect").addEventListener("change", onHoleChange);
 el("unitSelect").addEventListener("change", () => { if (rows.length > 0) plot(); });
+el("countUnitSelect").addEventListener("change", () => { if (rows.length > 0) plot(); });
 el("filterMonth").addEventListener("change", onFilterChange);
 el("filterYear").addEventListener("change", onFilterChange);
 el("selectAllVisibleBtn").addEventListener("click", selectAllVisible);
