@@ -60,27 +60,13 @@ function parseRow(r) {
   return { site, holeId, date, cableFt: cable, neutron, raw: r };
 }
 
-// Handles both M/D/YYYY (old) and YYYY-MM-DD (new)
+// Expect month/day/year, e.g. "8/5/2026" or "08/05/2026"
 function parseDateMDY(str) {
-  if (!str) return null;
-
-  // Try YYYY-MM-DD first
-  const isoMatch = str.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-  if (isoMatch) {
-    const year  = parseInt(isoMatch[1], 10);
-    const month = parseInt(isoMatch[2], 10);
-    const day   = parseInt(isoMatch[3], 10);
-    if (month >= 1 && month <= 12 && day >= 1 && day <= 31)
-      return { year, month, day };
-    return null;
-  }
-
-  // Fall back to M/D/YYYY or M-D-YYYY (old format)
   const parts = str.split(/[\/\-]/);
   if (parts.length !== 3) return null;
   const month = parseInt(parts[0], 10);
-  const day   = parseInt(parts[1], 10);
-  let   year  = parseInt(parts[2], 10);
+  const day = parseInt(parts[1], 10);
+  let year = parseInt(parts[2], 10);
   if (year < 100) year += 2000;
   if (!month || !day || !year || month > 12 || day > 31) return null;
   return { year, month, day };
@@ -289,10 +275,12 @@ function plot() {
   if (combos.length === 0) {
     setStatus("Select at least one month to plot.", true);
     Plotly.purge("plot");
+    el("areaResult").hidden = true;
     return;
   }
 
   const traces = [];
+  const seriesData = []; // {yr, mo, depths, values} — parallel to traces, used for area-between-curves
   const skipped = [];
   const plottedRawRows = [];
 
@@ -321,11 +309,14 @@ function plot() {
       line: { color: seriesColors[i % seriesColors.length], width: 2 },
       marker: { size: 6 }
     });
+
+    seriesData.push({ yr, mo, depths: cableVals, values: countVals });
   });
 
   if (traces.length === 0) {
     setStatus("No data found for that Site / Hole ID / date selection.", true);
     Plotly.purge("plot");
+    el("areaResult").hidden = true;
     return;
   }
 
@@ -352,7 +343,175 @@ function plot() {
 
   lastPlottedRawRows = plottedRawRows;
 
+  updateAreaResult(seriesData, unit, countUnit);
+
   setStatus(skipped.length ? `No data for: ${skipped.join(", ")}` : "");
+}
+
+// ---- Area between two curves (moisture change between two surveys) ----
+//
+// Linearly interpolates both series onto their shared depth range, then
+// integrates with the trapezoidal rule. When the moisture unit is Theta
+// (volumetric water content, dimensionless), integrating it over depth
+// gives an equivalent water-depth quantity — the same units as cable
+// length — which is a physically meaningful "how much water was gained
+// or lost" number, not just an abstract area.
+
+function interpAt(depths, values, target) {
+  if (target < depths[0] || target > depths[depths.length - 1]) return null;
+  for (let i = 0; i < depths.length - 1; i++) {
+    if (target >= depths[i] && target <= depths[i + 1]) {
+      if (depths[i + 1] === depths[i]) return values[i];
+      const t = (target - depths[i]) / (depths[i + 1] - depths[i]);
+      return values[i] + t * (values[i + 1] - values[i]);
+    }
+  }
+  return values[values.length - 1];
+}
+
+function trapz(xs, ys) {
+  let total = 0;
+  for (let i = 0; i < xs.length - 1; i++) {
+    total += 0.5 * (ys[i] + ys[i + 1]) * (xs[i + 1] - xs[i]);
+  }
+  return total;
+}
+
+function updateAreaResult(seriesData, unit, countUnit) {
+  const box = el("areaResult");
+
+  if (seriesData.length !== 2) {
+    box.hidden = true;
+    box.innerHTML = "";
+    clearAreaShading();
+    return;
+  }
+
+  const [a, b] = [...seriesData].sort((s1, s2) => (s1.yr - s2.yr) || (s1.mo - s2.mo));
+
+  if (a.depths.length < 2 || b.depths.length < 2) {
+    box.hidden = false;
+    box.innerHTML = `<h3>Moisture change</h3><p class="metric-label">Not enough data points in one of the two series to integrate.</p>`;
+    clearAreaShading();
+    return;
+  }
+
+  const loStart = Math.max(a.depths[0], b.depths[0]);
+  const hiEnd = Math.min(a.depths[a.depths.length - 1], b.depths[b.depths.length - 1]);
+
+  if (loStart >= hiEnd) {
+    box.hidden = false;
+    box.innerHTML = `<h3>Moisture change</h3><p class="metric-label">These two series don't overlap in cable length, so an area can't be computed.</p>`;
+    clearAreaShading();
+    return;
+  }
+
+  const mergedDepths = [...new Set([
+    loStart, hiEnd,
+    ...a.depths.filter((d) => d >= loStart && d <= hiEnd),
+    ...b.depths.filter((d) => d >= loStart && d <= hiEnd)
+  ])].sort((x, y) => x - y);
+
+  const diffs = mergedDepths.map((d) => interpAt(b.depths, b.values, d) - interpAt(a.depths, a.values, d));
+
+  // Insert the exact zero-crossing point wherever the sign of the
+  // difference flips between two consecutive breakpoints, so every
+  // sub-interval used for integration has a constant sign. Without this,
+  // trapezoidal integration of |diff| would miss where the curves
+  // actually cross and overstate the total area.
+  const refinedDepths = [mergedDepths[0]];
+  const refinedDiffs = [diffs[0]];
+  for (let i = 0; i < mergedDepths.length - 1; i++) {
+    const d0 = mergedDepths[i], d1 = mergedDepths[i + 1];
+    const v0 = diffs[i], v1 = diffs[i + 1];
+    if ((v0 > 0 && v1 < 0) || (v0 < 0 && v1 > 0)) {
+      const t = v0 / (v0 - v1);
+      refinedDepths.push(d0 + t * (d1 - d0));
+      refinedDiffs.push(0);
+    }
+    refinedDepths.push(d1);
+    refinedDiffs.push(v1);
+  }
+
+  // The exact (a, b) values at every refined breakpoint — used to draw
+  // shaded polygons on the plot that match precisely what's being
+  // integrated, rather than an approximate fill.
+  const aValsRefined = refinedDepths.map((d) => interpAt(a.depths, a.values, d));
+  const bValsRefined = refinedDepths.map((d) => interpAt(b.depths, b.values, d));
+
+  drawAreaShading(refinedDepths, refinedDiffs, aValsRefined, bValsRefined);
+
+  const netChange = trapz(refinedDepths, refinedDiffs);
+  const totalArea = trapz(refinedDepths, refinedDiffs.map(Math.abs));
+
+  const depthUnitLabel = unit === "m" ? "m" : "ft";
+  const areaUnitLabel = countUnit === "theta" ? `${depthUnitLabel} (equiv. water depth)` : `count\u00b7${depthUnitLabel}`;
+
+  const earlierLabel = `${monthName(a.mo)} ${a.yr}`;
+  const laterLabel = `${monthName(b.mo)} ${b.yr}`;
+  const direction = netChange > 0 ? "increase" : netChange < 0 ? "decrease" : "no change";
+
+  box.hidden = false;
+
+  // Total area only carries information beyond Net change when the two
+  // curves actually crossed somewhere (gains in part of the profile,
+  // losses elsewhere, canceling out in the net). If they never crossed,
+  // the two numbers are identical in magnitude, so only show one.
+  const curvesCrossed = Math.abs(totalArea - Math.abs(netChange)) > 1e-9 * Math.max(1, totalArea);
+
+  const totalAreaLine = curvesCrossed
+    ? `<div><span class="metric-label">Total area between curves: </span><span class="metric">${totalArea.toFixed(5)} ${areaUnitLabel}</span> <span class="metric-label">(the curves cross — this counts gains and losses separately instead of letting them cancel)</span></div>`
+    : "";
+
+  box.innerHTML = `
+    <h3>Moisture change: ${earlierLabel} \u2192 ${laterLabel}</h3>
+    <div><span class="metric-label">Net change: </span><span class="metric">${netChange.toFixed(5)} ${areaUnitLabel}</span> <span class="metric-label">(${direction})</span></div>
+    ${totalAreaLine}
+    <span class="caveat">Computed by treating each curve as straight lines between measured points (same as how they're drawn) and integrating exactly under that assumption, over the overlapping cable-length range ${loStart.toFixed(1)}\u2013${hiEnd.toFixed(1)} ${depthUnitLabel}. Shaded on the plot: blue where ${laterLabel} is wetter, rust where it's drier.</span>
+  `;
+}
+
+function clearAreaShading() {
+  Plotly.relayout("plot", { shapes: [] });
+}
+
+// Draws one filled polygon per constant-sign interval between the two
+// curves, using the exact same breakpoints (including exact crossing
+// points) used in the integration — so the shading always matches the
+// numbers exactly, not an approximate fill.
+//
+// Blue = the later survey is wetter than the earlier one at that depth;
+// rust = the later survey is drier. Both colors will appear together
+// only where the curves actually crossed.
+function drawAreaShading(depths, diffs, aVals, bVals) {
+  const shapes = [];
+
+  for (let i = 0; i < depths.length - 1; i++) {
+    const sign = diffs[i] + diffs[i + 1]; // both endpoints share sign within a refined interval
+    if (sign === 0) continue; // zero-width sliver at an exact crossing point — nothing to shade
+
+    const color = sign > 0 ? "rgba(74, 144, 194, 0.28)" : "rgba(164, 85, 46, 0.28)"; // water blue / iron-oxide rust
+
+    const path = [
+      `M ${aVals[i]},${depths[i]}`,
+      `L ${aVals[i + 1]},${depths[i + 1]}`,
+      `L ${bVals[i + 1]},${depths[i + 1]}`,
+      `L ${bVals[i]},${depths[i]}`,
+      "Z"
+    ].join(" ");
+
+    shapes.push({
+      type: "path",
+      path,
+      xref: "x",
+      yref: "y",
+      fillcolor: color,
+      line: { width: 0 },
+      layer: "below"
+    });
+  }
+
+  Plotly.relayout("plot", { shapes });
 }
 
 function monthName(m) {
