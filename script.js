@@ -285,6 +285,8 @@ function plot() {
   const countUnit = el("countUnitSelect").value;
   const combos = buildCombos();
 
+  el("shadeAreaField").hidden = combos.length !== 2;
+
   if (combos.length === 0) {
     setStatus("Select at least one month to plot.", true);
     Plotly.purge("plot");
@@ -392,6 +394,14 @@ function trapz(xs, ys) {
 
 function updateAreaResult(seriesData, unit, countUnit) {
   const box = el("areaResult");
+  const enabled = el("shadeAreaCheckbox").checked;
+
+  if (!enabled) {
+    box.hidden = true;
+    box.innerHTML = "";
+    clearAreaShading();
+    return;
+  }
 
   if (seriesData.length !== 2) {
     box.hidden = true;
@@ -404,7 +414,7 @@ function updateAreaResult(seriesData, unit, countUnit) {
 
   if (a.depths.length < 2 || b.depths.length < 2) {
     box.hidden = false;
-    box.innerHTML = `<h3>Moisture change</h3><p class="metric-label">Not enough data points in one of the two series to integrate.</p>`;
+    box.innerHTML = `<h3>Moisture difference</h3><p class="metric-label">Not enough data points in one of the two series to integrate.</p>`;
     clearAreaShading();
     return;
   }
@@ -414,7 +424,7 @@ function updateAreaResult(seriesData, unit, countUnit) {
 
   if (loStart >= hiEnd) {
     box.hidden = false;
-    box.innerHTML = `<h3>Moisture change</h3><p class="metric-label">These two series don't overlap in cable length, so an area can't be computed.</p>`;
+    box.innerHTML = `<h3>Moisture difference</h3><p class="metric-label">These two series don't overlap in cable length, so an area can't be computed.</p>`;
     clearAreaShading();
     return;
   }
@@ -452,11 +462,7 @@ function updateAreaResult(seriesData, unit, countUnit) {
   const aValsRefined = refinedDepths.map((d) => interpAt(a.depths, a.values, d));
   const bValsRefined = refinedDepths.map((d) => interpAt(b.depths, b.values, d));
 
-  if (el("shadeAreaCheckbox").checked) {
-    drawAreaShading(refinedDepths, refinedDiffs, aValsRefined, bValsRefined);
-  } else {
-    clearAreaShading();
-  }
+  drawAreaShading(refinedDepths, refinedDiffs, aValsRefined, bValsRefined);
 
   const netChange = trapz(refinedDepths, refinedDiffs);
   const totalArea = trapz(refinedDepths, refinedDiffs.map(Math.abs));
@@ -471,24 +477,18 @@ function updateAreaResult(seriesData, unit, countUnit) {
   box.hidden = false;
 
   // Total area only carries information beyond Net change when the two
-  // curves actually crossed somewhere (gains in part of the profile,
-  // losses elsewhere, canceling out in the net). If they never crossed,
-  // the two numbers are identical in magnitude, so only show one.
+  // curves actually crossed somewhere. If they never crossed, the two
+  // numbers are identical in magnitude, so only show one.
   const curvesCrossed = Math.abs(totalArea - Math.abs(netChange)) > 1e-9 * Math.max(1, totalArea);
 
   const totalAreaLine = curvesCrossed
-    ? `<div><span class="metric-label">Total area between curves: </span><span class="metric">${totalArea.toFixed(5)} ${areaUnitLabel}</span> <span class="metric-label">(the curves cross — this counts gains and losses separately instead of letting them cancel)</span></div>`
-    : "";
-
-  const shadingNote = el("shadeAreaCheckbox").checked
-    ? ` Shaded on the plot: blue where ${laterLabel} is wetter, rust where it's drier.`
+    ? `<div><span class="metric-label">Total area between curves: </span><span class="metric">${totalArea.toFixed(5)} ${areaUnitLabel}</span></div>`
     : "";
 
   box.innerHTML = `
-    <h3>Moisture change: ${earlierLabel} \u2192 ${laterLabel}</h3>
+    <h3>Moisture difference: ${earlierLabel} \u2192 ${laterLabel}</h3>
     <div><span class="metric-label">Net change: </span><span class="metric">${netChange.toFixed(5)} ${areaUnitLabel}</span> <span class="metric-label">(${direction})</span></div>
     ${totalAreaLine}
-    <span class="caveat">Computed by treating each curve as straight lines between measured points (same as how they're drawn) and integrating exactly under that assumption, over the overlapping cable-length range ${loStart.toFixed(1)}\u2013${hiEnd.toFixed(1)} ${depthUnitLabel}.${shadingNote}</span>
   `;
 }
 
@@ -638,7 +638,16 @@ el("siteSelect").addEventListener("change", onSiteChange);
 el("holeSelect").addEventListener("change", onHoleChange);
 el("unitSelect").addEventListener("change", () => { if (rows.length > 0) plot(); });
 el("countUnitSelect").addEventListener("change", () => { if (rows.length > 0) plot(); });
-el("shadeAreaCheckbox").addEventListener("change", () => { if (rows.length > 0) plot(); });
+el("shadeAreaCheckbox").addEventListener("change", (e) => {
+  if (e.target.checked) {
+    // Meters + Theta are the only units where this integral is
+    // physically meaningful (equivalent water depth), so force them
+    // whenever this feature is turned on.
+    el("unitSelect").value = "m";
+    el("countUnitSelect").value = "theta";
+  }
+  if (rows.length > 0) plot();
+});
 el("filterMonth").addEventListener("change", onFilterChange);
 el("filterYear").addEventListener("change", onFilterChange);
 el("selectAllVisibleBtn").addEventListener("click", selectAllVisible);
