@@ -60,14 +60,27 @@ function parseRow(r) {
   return { site, holeId, date, cableFt: cable, neutron, raw: r };
 }
 
-// Expect month/day/year, e.g. "8/5/2026" or "08/05/2026"
+// Accepts either month/day/year (e.g. "8/5/2026") or ISO year-month-day
+// (e.g. "2026-08-05") — detected by which segment is 4 digits (the year).
 function parseDateMDY(str) {
   const parts = str.split(/[\/\-]/);
   if (parts.length !== 3) return null;
-  const month = parseInt(parts[0], 10);
-  const day = parseInt(parts[1], 10);
-  let year = parseInt(parts[2], 10);
-  if (year < 100) year += 2000;
+
+  let year, month, day;
+
+  if (parts[0].length === 4) {
+    // ISO: YYYY-MM-DD
+    year = parseInt(parts[0], 10);
+    month = parseInt(parts[1], 10);
+    day = parseInt(parts[2], 10);
+  } else {
+    // MM/DD/YYYY (or MM/DD/YY)
+    month = parseInt(parts[0], 10);
+    day = parseInt(parts[1], 10);
+    year = parseInt(parts[2], 10);
+    if (year < 100) year += 2000;
+  }
+
   if (!month || !day || !year || month > 12 || day > 31) return null;
   return { year, month, day };
 }
@@ -439,7 +452,11 @@ function updateAreaResult(seriesData, unit, countUnit) {
   const aValsRefined = refinedDepths.map((d) => interpAt(a.depths, a.values, d));
   const bValsRefined = refinedDepths.map((d) => interpAt(b.depths, b.values, d));
 
-  drawAreaShading(refinedDepths, refinedDiffs, aValsRefined, bValsRefined);
+  if (el("shadeAreaCheckbox").checked) {
+    drawAreaShading(refinedDepths, refinedDiffs, aValsRefined, bValsRefined);
+  } else {
+    clearAreaShading();
+  }
 
   const netChange = trapz(refinedDepths, refinedDiffs);
   const totalArea = trapz(refinedDepths, refinedDiffs.map(Math.abs));
@@ -463,11 +480,15 @@ function updateAreaResult(seriesData, unit, countUnit) {
     ? `<div><span class="metric-label">Total area between curves: </span><span class="metric">${totalArea.toFixed(5)} ${areaUnitLabel}</span> <span class="metric-label">(the curves cross — this counts gains and losses separately instead of letting them cancel)</span></div>`
     : "";
 
+  const shadingNote = el("shadeAreaCheckbox").checked
+    ? ` Shaded on the plot: blue where ${laterLabel} is wetter, rust where it's drier.`
+    : "";
+
   box.innerHTML = `
     <h3>Moisture change: ${earlierLabel} \u2192 ${laterLabel}</h3>
     <div><span class="metric-label">Net change: </span><span class="metric">${netChange.toFixed(5)} ${areaUnitLabel}</span> <span class="metric-label">(${direction})</span></div>
     ${totalAreaLine}
-    <span class="caveat">Computed by treating each curve as straight lines between measured points (same as how they're drawn) and integrating exactly under that assumption, over the overlapping cable-length range ${loStart.toFixed(1)}\u2013${hiEnd.toFixed(1)} ${depthUnitLabel}. Shaded on the plot: blue where ${laterLabel} is wetter, rust where it's drier.</span>
+    <span class="caveat">Computed by treating each curve as straight lines between measured points (same as how they're drawn) and integrating exactly under that assumption, over the overlapping cable-length range ${loStart.toFixed(1)}\u2013${hiEnd.toFixed(1)} ${depthUnitLabel}.${shadingNote}</span>
   `;
 }
 
@@ -617,6 +638,7 @@ el("siteSelect").addEventListener("change", onSiteChange);
 el("holeSelect").addEventListener("change", onHoleChange);
 el("unitSelect").addEventListener("change", () => { if (rows.length > 0) plot(); });
 el("countUnitSelect").addEventListener("change", () => { if (rows.length > 0) plot(); });
+el("shadeAreaCheckbox").addEventListener("change", () => { if (rows.length > 0) plot(); });
 el("filterMonth").addEventListener("change", onFilterChange);
 el("filterYear").addEventListener("change", onFilterChange);
 el("selectAllVisibleBtn").addEventListener("click", selectAllVisible);
