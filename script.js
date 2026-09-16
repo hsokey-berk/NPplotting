@@ -111,7 +111,6 @@ function onSiteChange() {
 
 function onHoleChange() {
   refreshCompareList();
-
   if (rows.length > 0) plot();
 }
 
@@ -203,6 +202,19 @@ function getVisibleCombos() {
   });
 }
 
+// Centralised helper — keeps the shade field visibility and checkbox
+// state consistent with checkedCombos. Call this whenever checkedCombos
+// changes AND whenever a plot is drawn.
+function syncShadeField() {
+  const exactlyTwo = checkedCombos.size === 2;
+  el("shadeAreaField").hidden = !exactlyTwo;
+  if (!exactlyTwo && el("shadeAreaCheckbox").checked) {
+    el("shadeAreaCheckbox").checked = false;
+    el("areaResult").hidden = true;
+    clearAreaShading();
+  }
+}
+
 // Renders only the currently visible (filtered) combos as checkboxes.
 // checkedCombos itself is untouched by filtering — a checked box that
 // scrolls out of view under a filter stays checked, it just isn't shown.
@@ -215,10 +227,7 @@ function renderCompareChecks() {
     p.className = "empty";
     p.textContent = "No other months available for this hole.";
     container.appendChild(p);
-    el("shadeAreaField").hidden = true;
-    el("shadeAreaCheckbox").checked = false;
-    el("areaResult").hidden = true;
-    clearAreaShading();
+    syncShadeField();
     return;
   }
 
@@ -229,12 +238,7 @@ function renderCompareChecks() {
     p.className = "empty";
     p.textContent = "No months match this filter.";
     container.appendChild(p);
-    el("shadeAreaField").hidden = checkedCombos.size !== 2;
-    if (checkedCombos.size !== 2) {
-      el("shadeAreaCheckbox").checked = false;
-      el("areaResult").hidden = true;
-      clearAreaShading();
-    }
+    syncShadeField();
     return;
   }
 
@@ -249,6 +253,7 @@ function renderCompareChecks() {
     cb.addEventListener("change", () => {
       if (cb.checked) checkedCombos.add(value);
       else checkedCombos.delete(value);
+      syncShadeField();
       if (rows.length > 0) plot();
     });
     label.appendChild(cb);
@@ -256,13 +261,7 @@ function renderCompareChecks() {
     container.appendChild(label);
   });
 
-  // Show the calculate button only when exactly two months are checked.
-  el("shadeAreaField").hidden = checkedCombos.size !== 2;
-  if (checkedCombos.size !== 2) {
-    el("shadeAreaCheckbox").checked = false;
-    el("areaResult").hidden = true;
-    clearAreaShading();
-  }
+  syncShadeField();
 }
 
 function onFilterChange() {
@@ -288,18 +287,18 @@ function clearAllCompare() {
 
 function buildCombos() {
   const combos = [];
-
   checkedCombos.forEach((value) => {
     const [y, m] = value.split("-").map(Number);
     combos.push([y, m]);
   });
-
   return combos;
 }
 
 // ---- Plot ----
 
 function plot() {
+  syncShadeField();
+
   const site = el("siteSelect").value;
   const hole = el("holeSelect").value;
   const unit = el("unitSelect").value;
@@ -380,7 +379,10 @@ function plot() {
   lastPlotUnit = unit;
   lastPlotCountUnit = countUnit;
 
-  updateAreaResult(seriesData, unit, countUnit);
+  // Yield to let Plotly finish its synchronous layout work before
+  // updating the result panel, so the div is never written before the
+  // plot is ready.
+  setTimeout(() => updateAreaResult(seriesData, unit, countUnit), 0);
 
   setStatus(skipped.length ? `No data for: ${skipped.join(", ")}` : "");
 }
