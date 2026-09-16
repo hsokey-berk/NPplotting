@@ -3,9 +3,6 @@ let rows = [];               // parsed + typed data rows (subset of columns, use
 let rawRows = [];            // every column, unfiltered — used for "view CSV" tables
 let rawHeaders = [];
 let lastPlottedRawRows = []; // raw rows behind whatever is currently on the graph
-let lastSeriesData = [];     // kept in sync with whatever is on the graph
-let lastPlotUnit = "ft";
-let lastPlotCountUnit = "count";
 let sites = [];
 let seriesColors = ["#2F6F62", "#B9863E", "#4A6B8A", "#A4552E", "#6B5B8C", "#7A8C4A"];
 
@@ -111,6 +108,7 @@ function onSiteChange() {
 
 function onHoleChange() {
   refreshCompareList();
+
   if (rows.length > 0) plot();
 }
 
@@ -202,19 +200,6 @@ function getVisibleCombos() {
   });
 }
 
-// Centralised helper — keeps the shade field visibility and checkbox
-// state consistent with checkedCombos. Call this whenever checkedCombos
-// changes AND whenever a plot is drawn.
-function syncShadeField() {
-  const exactlyTwo = checkedCombos.size === 2;
-  el("shadeAreaField").hidden = !exactlyTwo;
-  if (!exactlyTwo && el("shadeAreaCheckbox").checked) {
-    el("shadeAreaCheckbox").checked = false;
-    el("areaResult").hidden = true;
-    clearAreaShading();
-  }
-}
-
 // Renders only the currently visible (filtered) combos as checkboxes.
 // checkedCombos itself is untouched by filtering — a checked box that
 // scrolls out of view under a filter stays checked, it just isn't shown.
@@ -227,7 +212,6 @@ function renderCompareChecks() {
     p.className = "empty";
     p.textContent = "No other months available for this hole.";
     container.appendChild(p);
-    syncShadeField();
     return;
   }
 
@@ -238,7 +222,6 @@ function renderCompareChecks() {
     p.className = "empty";
     p.textContent = "No months match this filter.";
     container.appendChild(p);
-    syncShadeField();
     return;
   }
 
@@ -253,15 +236,12 @@ function renderCompareChecks() {
     cb.addEventListener("change", () => {
       if (cb.checked) checkedCombos.add(value);
       else checkedCombos.delete(value);
-      syncShadeField();
       if (rows.length > 0) plot();
     });
     label.appendChild(cb);
     label.appendChild(document.createTextNode(`${monthName(m)} ${y}`));
     container.appendChild(label);
   });
-
-  syncShadeField();
 }
 
 function onFilterChange() {
@@ -287,23 +267,25 @@ function clearAllCompare() {
 
 function buildCombos() {
   const combos = [];
+
   checkedCombos.forEach((value) => {
     const [y, m] = value.split("-").map(Number);
     combos.push([y, m]);
   });
+
   return combos;
 }
 
 // ---- Plot ----
 
 function plot() {
-  syncShadeField();
-
   const site = el("siteSelect").value;
   const hole = el("holeSelect").value;
   const unit = el("unitSelect").value;
   const countUnit = el("countUnitSelect").value;
   const combos = buildCombos();
+
+  el("shadeAreaField").hidden = combos.length !== 2;
 
   if (combos.length === 0) {
     setStatus("Select at least one month to plot.", true);
@@ -375,14 +357,8 @@ function plot() {
   Plotly.newPlot("plot", traces, layout, { responsive: true, displaylogo: false });
 
   lastPlottedRawRows = plottedRawRows;
-  lastSeriesData = seriesData;
-  lastPlotUnit = unit;
-  lastPlotCountUnit = countUnit;
 
-  // Yield to let Plotly finish its synchronous layout work before
-  // updating the result panel, so the div is never written before the
-  // plot is ready.
-  setTimeout(() => updateAreaResult(seriesData, unit, countUnit), 0);
+  updateAreaResult(seriesData, unit, countUnit);
 
   setStatus(skipped.length ? `No data for: ${skipped.join(", ")}` : "");
 }
@@ -669,14 +645,8 @@ el("shadeAreaCheckbox").addEventListener("change", (e) => {
     // whenever this feature is turned on.
     el("unitSelect").value = "m";
     el("countUnitSelect").value = "theta";
-    // Re-plot so seriesData is rebuilt with the forced units before
-    // updateAreaResult runs.
-    if (rows.length > 0) plot();
-  } else {
-    // Unchecking doesn't need a full re-plot — just clear the overlay.
-    el("areaResult").hidden = true;
-    clearAreaShading();
   }
+  if (rows.length > 0) plot();
 });
 el("filterMonth").addEventListener("change", onFilterChange);
 el("filterYear").addEventListener("change", onFilterChange);
