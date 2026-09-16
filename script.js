@@ -428,7 +428,7 @@ function updateAreaResult(seriesData, unit, countUnit) {
   const totalArea = trapz(refinedDepths, refinedDiffs.map(Math.abs));
 
   const depthUnitLabel = unit === "m" ? "m" : "ft";
-  const areaUnitLabel = countUnit === "theta" ? `${depthUnitLabel} ` : `count\u00b7${depthUnitLabel}`;
+  const areaUnitLabel = countUnit === "theta" ? `${depthUnitLabel}` : `count\u00b7${depthUnitLabel}`;
 
   const earlierLabel = `${monthName(a.mo)} ${a.yr}`;
   const laterLabel = `${monthName(b.mo)} ${b.yr}`;
