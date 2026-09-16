@@ -1,8 +1,8 @@
 // ---- State ----
-let rows = [];               // parsed + typed data rows (subset of columns, used for plotting)
-let rawRows = [];            // every column, unfiltered — used for "view CSV" tables
+let rows = [];
+let rawRows = [];
 let rawHeaders = [];
-let lastPlottedRawRows = []; // raw rows behind whatever is currently on the graph
+let lastPlottedRawRows = [];
 let sites = [];
 let seriesColors = ["#2F6F62", "#B9863E", "#4A6B8A", "#A4552E", "#6B5B8C", "#7A8C4A"];
 
@@ -19,7 +19,6 @@ function loadData() {
       try {
         rawRows = results.data;
         rawHeaders = results.meta && results.meta.fields ? results.meta.fields : [];
-
         rows = results.data.map(parseRow).filter((r) => r !== null);
         if (rows.length === 0) {
           setStatus("File loaded, but no valid rows were found — check column names match exactly.", true);
@@ -60,8 +59,6 @@ function parseRow(r) {
   return { site, holeId, date, cableFt: cable, neutron, raw: r };
 }
 
-// Accepts either month/day/year (e.g. "8/5/2026") or ISO year-month-day
-// (e.g. "2026-08-05") — detected by which segment is 4 digits (the year).
 function parseDateMDY(str) {
   const parts = str.split(/[\/\-]/);
   if (parts.length !== 3) return null;
@@ -69,12 +66,10 @@ function parseDateMDY(str) {
   let year, month, day;
 
   if (parts[0].length === 4) {
-    // ISO: YYYY-MM-DD
     year = parseInt(parts[0], 10);
     month = parseInt(parts[1], 10);
     day = parseInt(parts[2], 10);
   } else {
-    // MM/DD/YYYY (or MM/DD/YY)
     month = parseInt(parts[0], 10);
     day = parseInt(parts[1], 10);
     year = parseInt(parts[2], 10);
@@ -108,7 +103,6 @@ function onSiteChange() {
 
 function onHoleChange() {
   refreshCompareList();
-
   if (rows.length > 0) plot();
 }
 
@@ -123,19 +117,10 @@ function fillSelect(selectEl, values) {
 }
 
 // ---- Plot-selection state ----
-// allCombos: every (year, month) with data for the current Site + Hole.
-// checkedCombos: the set of (year, month) values the user has selected
-//   to plot — persists independently of the month/year filters, so
-//   filtering the list never silently drops a selection.
+
 let allCombos = [];
 let checkedCombos = new Set();
 
-// Rebuild allCombos for the current Site + Hole ID, prune any stale
-// checked entries that no longer exist, refresh the filter dropdown
-// options, and re-render the checkbox list. If nothing ends up checked
-// (e.g. first load, or a switch to a hole with no carried-over
-// selection), default to the single most recent month so there's always
-// something to plot without extra clicks.
 function refreshCompareList() {
   const site = el("siteSelect").value;
   const hole = el("holeSelect").value;
@@ -153,7 +138,7 @@ function refreshCompareList() {
   checkedCombos = new Set([...checkedCombos].filter((v) => validValues.has(v)));
 
   if (checkedCombos.size === 0 && allCombos.length > 0) {
-    const [y, m] = allCombos[0]; // allCombos is sorted most-recent first
+    const [y, m] = allCombos[0];
     checkedCombos.add(`${y}-${m}`);
   }
 
@@ -161,8 +146,6 @@ function refreshCompareList() {
   renderCompareChecks();
 }
 
-// Populate the two filter dropdowns with only the months/years actually
-// present in allCombos, keeping the current selection if it's still valid.
 function renderFilterOptions() {
   const months = [...new Set(allCombos.map(([, m]) => m))].sort((a, b) => a - b);
   const years = [...new Set(allCombos.map(([y]) => y))].sort((a, b) => b - a);
@@ -200,9 +183,6 @@ function getVisibleCombos() {
   });
 }
 
-// Renders only the currently visible (filtered) combos as checkboxes.
-// checkedCombos itself is untouched by filtering — a checked box that
-// scrolls out of view under a filter stays checked, it just isn't shown.
 function renderCompareChecks() {
   const container = el("compareChecks");
   container.innerHTML = "";
@@ -248,31 +228,26 @@ function onFilterChange() {
   renderCompareChecks();
 }
 
-// Selects every combo currently visible under the filter — doesn't touch
-// selections that are hidden by the filter.
 function selectAllVisible() {
   getVisibleCombos().forEach(([y, m]) => checkedCombos.add(`${y}-${m}`));
   renderCompareChecks();
   if (rows.length > 0) plot();
 }
 
-// Clears every selection, visible or not.
 function clearAllCompare() {
   checkedCombos.clear();
   renderCompareChecks();
   if (rows.length > 0) plot();
 }
 
-// ---- Build (year, month) combos to plot ----
+// ---- Build combos to plot ----
 
 function buildCombos() {
   const combos = [];
-
   checkedCombos.forEach((value) => {
     const [y, m] = value.split("-").map(Number);
     combos.push([y, m]);
   });
-
   return combos;
 }
 
@@ -295,7 +270,7 @@ function plot() {
   }
 
   const traces = [];
-  const seriesData = []; // {yr, mo, depths, values} — parallel to traces, used for area-between-curves
+  const seriesData = [];
   const skipped = [];
   const plottedRawRows = [];
 
@@ -363,14 +338,7 @@ function plot() {
   setStatus(skipped.length ? `No data for: ${skipped.join(", ")}` : "");
 }
 
-// ---- Area between two curves (moisture change between two surveys) ----
-//
-// Linearly interpolates both series onto their shared depth range, then
-// integrates with the trapezoidal rule. When the moisture unit is Theta
-// (volumetric water content, dimensionless), integrating it over depth
-// gives an equivalent water-depth quantity — the same units as cable
-// length — which is a physically meaningful "how much water was gained
-// or lost" number, not just an abstract area.
+// ---- Area between two curves ----
 
 function interpAt(depths, values, target) {
   if (target < depths[0] || target > depths[depths.length - 1]) return null;
@@ -437,11 +405,6 @@ function updateAreaResult(seriesData, unit, countUnit) {
 
   const diffs = mergedDepths.map((d) => interpAt(b.depths, b.values, d) - interpAt(a.depths, a.values, d));
 
-  // Insert the exact zero-crossing point wherever the sign of the
-  // difference flips between two consecutive breakpoints, so every
-  // sub-interval used for integration has a constant sign. Without this,
-  // trapezoidal integration of |diff| would miss where the curves
-  // actually cross and overstate the total area.
   const refinedDepths = [mergedDepths[0]];
   const refinedDiffs = [diffs[0]];
   for (let i = 0; i < mergedDepths.length - 1; i++) {
@@ -456,9 +419,6 @@ function updateAreaResult(seriesData, unit, countUnit) {
     refinedDiffs.push(v1);
   }
 
-  // The exact (a, b) values at every refined breakpoint — used to draw
-  // shaded polygons on the plot that match precisely what's being
-  // integrated, rather than an approximate fill.
   const aValsRefined = refinedDepths.map((d) => interpAt(a.depths, a.values, d));
   const bValsRefined = refinedDepths.map((d) => interpAt(b.depths, b.values, d));
 
@@ -474,17 +434,13 @@ function updateAreaResult(seriesData, unit, countUnit) {
   const laterLabel = `${monthName(b.mo)} ${b.yr}`;
   const direction = netChange > 0 ? "increase" : netChange < 0 ? "decrease" : "no change";
 
-  box.hidden = false;
-
-  // Total area only carries information beyond Net change when the two
-  // curves actually crossed somewhere. If they never crossed, the two
-  // numbers are identical in magnitude, so only show one.
   const curvesCrossed = Math.abs(totalArea - Math.abs(netChange)) > 1e-9 * Math.max(1, totalArea);
 
   const totalAreaLine = curvesCrossed
     ? `<div><span class="metric-label">Total area between curves: </span><span class="metric">${totalArea.toFixed(5)} ${areaUnitLabel}</span></div>`
     : "";
 
+  box.hidden = false;
   box.innerHTML = `
     <h3>Moisture difference: ${earlierLabel} \u2192 ${laterLabel}</h3>
     <div><span class="metric-label">Net change: </span><span class="metric">${netChange.toFixed(5)} ${areaUnitLabel}</span> <span class="metric-label">(${direction})</span></div>
@@ -496,22 +452,14 @@ function clearAreaShading() {
   Plotly.relayout("plot", { shapes: [] });
 }
 
-// Draws one filled polygon per constant-sign interval between the two
-// curves, using the exact same breakpoints (including exact crossing
-// points) used in the integration — so the shading always matches the
-// numbers exactly, not an approximate fill.
-//
-// Blue = the later survey is wetter than the earlier one at that depth;
-// rust = the later survey is drier. Both colors will appear together
-// only where the curves actually crossed.
 function drawAreaShading(depths, diffs, aVals, bVals) {
   const shapes = [];
 
   for (let i = 0; i < depths.length - 1; i++) {
-    const sign = diffs[i] + diffs[i + 1]; // both endpoints share sign within a refined interval
-    if (sign === 0) continue; // zero-width sliver at an exact crossing point — nothing to shade
+    const sign = diffs[i] + diffs[i + 1];
+    if (sign === 0) continue;
 
-    const color = sign > 0 ? "rgba(74, 144, 194, 0.28)" : "rgba(164, 85, 46, 0.28)"; // water blue / iron-oxide rust
+    const color = sign > 0 ? "rgba(74, 144, 194, 0.28)" : "rgba(164, 85, 46, 0.28)";
 
     const path = [
       `M ${aVals[i]},${depths[i]}`,
@@ -546,7 +494,7 @@ function setStatus(msg, isError = false) {
   note.classList.toggle("error", isError);
 }
 
-// ---- CSV-as-sheet modal (paginated, so it stays smooth with 100k+ rows) ----
+// ---- CSV modal ----
 
 const PAGE_SIZE = 250;
 let modalDataset = [];
@@ -632,7 +580,7 @@ function csvNextPage() {
   renderModalPage();
 }
 
-// ---- Wire up events ----
+// ---- Events ----
 
 el("siteSelect").addEventListener("change", onSiteChange);
 el("holeSelect").addEventListener("change", onHoleChange);
@@ -640,9 +588,6 @@ el("unitSelect").addEventListener("change", () => { if (rows.length > 0) plot();
 el("countUnitSelect").addEventListener("change", () => { if (rows.length > 0) plot(); });
 el("shadeAreaCheckbox").addEventListener("change", (e) => {
   if (e.target.checked) {
-    // Meters + Theta are the only units where this integral is
-    // physically meaningful (equivalent water depth), so force them
-    // whenever this feature is turned on.
     el("unitSelect").value = "m";
     el("countUnitSelect").value = "theta";
   }
