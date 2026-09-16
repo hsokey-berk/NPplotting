@@ -436,21 +436,20 @@ function updateAreaResult(seriesData, unit, countUnit) {
 
   const curvesCrossed = Math.abs(totalArea - Math.abs(netChange)) > 1e-9 * Math.max(1, totalArea);
 
-  box.hidden = false;
-  const netChangeMm = countUnit === "theta" ? (netChange * 1000).toFixed(2) + " mm" : "";
-  const totalAreaMm = countUnit === "theta" ? (totalArea * 1000).toFixed(2) + " mm" : "";
+  const netChangeMm = countUnit === "theta" ? (netChange * 1000).toFixed(2) + "mm" : "";
+  const totalAreaMm = countUnit === "theta" ? (totalArea * 1000).toFixed(2) + "mm" : "";
 
   const netMmSpan = netChangeMm ? ` <span class="metric-label">/ </span><span class="metric">${netChangeMm}</span>` : "";
   const totalMmSpan = totalAreaMm && curvesCrossed ? ` <span class="metric-label">/ </span><span class="metric">${totalAreaMm}</span>` : "";
 
   const totalAreaLine = curvesCrossed
-    ? `<div><span class="metric-label">Total area between curves: </span><span class="metric">${totalArea.toFixed(5)} ${areaUnitLabel}</span>${totalMmSpan}</div>`
+    ? `<div><span class="metric-label">Total area between curves: </span><span class="metric">${totalArea.toFixed(5)}${areaUnitLabel}</span>${totalMmSpan}</div>`
     : "";
 
   box.hidden = false;
   box.innerHTML = `
     <h3>Moisture difference: ${earlierLabel} \u2192 ${laterLabel}</h3>
-    <div><span class="metric-label">Net change: </span><span class="metric">${netChange.toFixed(5)} ${areaUnitLabel}</span>${netMmSpan} <span class="metric-label">(${direction})</span></div>
+    <div><span class="metric-label">Net change: </span><span class="metric">${netChange.toFixed(5)}${areaUnitLabel}</span>${netMmSpan} <span class="metric-label">(${direction})</span></div>
     ${totalAreaLine}
   `;
 }
