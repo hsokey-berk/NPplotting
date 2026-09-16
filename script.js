@@ -3,6 +3,9 @@ let rows = [];               // parsed + typed data rows (subset of columns, use
 let rawRows = [];            // every column, unfiltered — used for "view CSV" tables
 let rawHeaders = [];
 let lastPlottedRawRows = []; // raw rows behind whatever is currently on the graph
+let lastSeriesData = [];     // kept in sync with whatever is on the graph
+let lastPlotUnit = "ft";
+let lastPlotCountUnit = "count";
 let sites = [];
 let seriesColors = ["#2F6F62", "#B9863E", "#4A6B8A", "#A4552E", "#6B5B8C", "#7A8C4A"];
 
@@ -212,6 +215,10 @@ function renderCompareChecks() {
     p.className = "empty";
     p.textContent = "No other months available for this hole.";
     container.appendChild(p);
+    el("shadeAreaField").hidden = true;
+    el("shadeAreaCheckbox").checked = false;
+    el("areaResult").hidden = true;
+    clearAreaShading();
     return;
   }
 
@@ -222,6 +229,12 @@ function renderCompareChecks() {
     p.className = "empty";
     p.textContent = "No months match this filter.";
     container.appendChild(p);
+    el("shadeAreaField").hidden = checkedCombos.size !== 2;
+    if (checkedCombos.size !== 2) {
+      el("shadeAreaCheckbox").checked = false;
+      el("areaResult").hidden = true;
+      clearAreaShading();
+    }
     return;
   }
 
@@ -242,6 +255,14 @@ function renderCompareChecks() {
     label.appendChild(document.createTextNode(`${monthName(m)} ${y}`));
     container.appendChild(label);
   });
+
+  // Show the calculate button only when exactly two months are checked.
+  el("shadeAreaField").hidden = checkedCombos.size !== 2;
+  if (checkedCombos.size !== 2) {
+    el("shadeAreaCheckbox").checked = false;
+    el("areaResult").hidden = true;
+    clearAreaShading();
+  }
 }
 
 function onFilterChange() {
@@ -284,8 +305,6 @@ function plot() {
   const unit = el("unitSelect").value;
   const countUnit = el("countUnitSelect").value;
   const combos = buildCombos();
-
-  el("shadeAreaField").hidden = combos.length !== 2;
 
   if (combos.length === 0) {
     setStatus("Select at least one month to plot.", true);
@@ -357,6 +376,9 @@ function plot() {
   Plotly.newPlot("plot", traces, layout, { responsive: true, displaylogo: false });
 
   lastPlottedRawRows = plottedRawRows;
+  lastSeriesData = seriesData;
+  lastPlotUnit = unit;
+  lastPlotCountUnit = countUnit;
 
   updateAreaResult(seriesData, unit, countUnit);
 
@@ -645,8 +667,14 @@ el("shadeAreaCheckbox").addEventListener("change", (e) => {
     // whenever this feature is turned on.
     el("unitSelect").value = "m";
     el("countUnitSelect").value = "theta";
+    // Re-plot so seriesData is rebuilt with the forced units before
+    // updateAreaResult runs.
+    if (rows.length > 0) plot();
+  } else {
+    // Unchecking doesn't need a full re-plot — just clear the overlay.
+    el("areaResult").hidden = true;
+    clearAreaShading();
   }
-  if (rows.length > 0) plot();
 });
 el("filterMonth").addEventListener("change", onFilterChange);
 el("filterYear").addEventListener("change", onFilterChange);
