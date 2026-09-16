@@ -428,8 +428,7 @@ function updateAreaResult(seriesData, unit, countUnit) {
   const totalArea = trapz(refinedDepths, refinedDiffs.map(Math.abs));
 
   const depthUnitLabel = unit === "m" ? "m" : "ft";
-  const areaUnitLabel = countUnit === "theta" ? `${depthUnitLabel} (equiv. water depth)` : `count\u00b7${depthUnitLabel}`;
-
+  const areaUnitLabel = countUnit === "theta" ? depthUnitLabel : `count\u00b7${depthUnitLabel}`;
   const earlierLabel = `${monthName(a.mo)} ${a.yr}`;
   const laterLabel = `${monthName(b.mo)} ${b.yr}`;
   const direction = netChange > 0 ? "increase" : netChange < 0 ? "decrease" : "no change";
@@ -443,13 +442,13 @@ function updateAreaResult(seriesData, unit, countUnit) {
   const totalMmSpan = totalAreaMm && curvesCrossed ? ` <span class="metric-label">/ </span><span class="metric">${totalAreaMm}</span>` : "";
 
   const totalAreaLine = curvesCrossed
-    ? `<div><span class="metric-label">Total area between curves: </span><span class="metric">${totalArea.toFixed(5)} <b>${areaUnitLabel}</b></span>${totalMmSpan}</div>`
+    ? `<div><span class="metric-label">Total area between curves: </span><span class="metric">${totalArea.toFixed(5)} ${areaUnitLabel}</span>${totalMmSpan}</div>`
     : "";
 
   box.hidden = false;
   box.innerHTML = `
     <h3>Moisture difference: ${earlierLabel} \u2192 ${laterLabel}</h3>
-    <div><span class="metric-label">Net change: </span><span class="metric">${netChange.toFixed(5)} <b>${areaUnitLabel}</b></span>${netMmSpan} <span class="metric-label">(${direction})</span></div>
+    <div><span class="metric-label">Net change: </span><span class="metric">${netChange.toFixed(5)} ${areaUnitLabel}</span>${netMmSpan} <span class="metric-label">(${direction})</span></div>
     ${totalAreaLine}
   `;
 }
