@@ -380,6 +380,26 @@ select:focus, .plotBtn:focus, input:focus {
   font-style: italic;
 }
 
+.viewerBtn {
+  position: fixed;
+  top: 16px;
+  right: 20px;
+  z-index: 100;
+  background: var(--accent);
+  color: var(--accent-ink);
+  font-family: 'IBM Plex Sans', system-ui, sans-serif;
+  font-size: 13px;
+  font-weight: 600;
+  text-decoration: none;
+  padding: 8px 16px;
+  border-radius: 3px;
+  transition: background 0.15s ease;
+}
+
+.viewerBtn:hover {
+  background: #26594E;
+}
+
 @media (max-width: 800px) {
   .frame { grid-template-columns: 1fr; grid-template-rows: auto 1fr; height: auto; min-height: 100vh; }
   .rail { border-right: none; border-bottom: 1px solid var(--line); height: auto; overflow-y: visible; max-height: 60vh; }
