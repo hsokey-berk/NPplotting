@@ -83,22 +83,18 @@
 
     <div class="tsOnly tsPanel">
       <div class="field">
-        <label for="tsStart">Start month</label>
-        <select id="tsStart"></select>
+        <label>Start</label>
+        <div class="filterRow">
+          <select id="tsStartMonth"></select>
+          <select id="tsStartYear"></select>
+        </div>
       </div>
       <div class="field">
-        <label for="tsEnd">End month</label>
-        <select id="tsEnd"></select>
-      </div>
-      <div class="field">
-        <label for="tsSpeed">Speed</label>
-        <select id="tsSpeed">
-          <option value="1">1 month / sec</option>
-          <option value="2" selected>2 months / sec</option>
-          <option value="4">4 months / sec</option>
-          <option value="12">12 months / sec</option>
-          <option value="24">24 months / sec</option>
-        </select>
+        <label>End</label>
+        <div class="filterRow">
+          <select id="tsEndMonth"></select>
+          <select id="tsEndYear"></select>
+        </div>
       </div>
       <div class="actionRow">
         <button id="tsPlayBtn" class="smallBtn">Play</button>
