@@ -19,6 +19,14 @@
     </header>
 
     <div class="field">
+      <label for="modeSelect">Mode</label>
+      <select id="modeSelect">
+        <option value="standard">Standard plot</option>
+        <option value="timeseries">Moisture change through time</option>
+      </select>
+    </div>
+
+    <div class="field">
       <label for="siteSelect">Site</label>
       <select id="siteSelect"></select>
     </div>
@@ -28,7 +36,7 @@
       <select id="holeSelect"></select>
     </div>
 
-    <div class="field">
+    <div class="field defaultOnly">
       <label for="unitSelect">Cable length units</label>
       <select id="unitSelect">
         <option value="ft">Feet</option>
@@ -36,7 +44,7 @@
       </select>
     </div>
 
-    <div class="field">
+    <div class="field defaultOnly">
       <label for="countUnitSelect">Moisture units</label>
       <select id="countUnitSelect">
         <option value="count">Neutron Count (MD)</option>
@@ -44,15 +52,16 @@
       </select>
     </div>
 
-    <div class="field" id="shadeAreaField" hidden>
+    <div class="field defaultOnly" id="shadeAreaField" hidden>
       <label class="checkboxLabel">
         <input type="checkbox" id="shadeAreaCheckbox">
         Calculate moisture difference
       </label>
     </div>
 
+    <hr class="rule defaultOnly">
 
-    <div class="field">
+    <div class="field defaultOnly">
       <label>Months to plot</label>
 
       <div class="filterRow">
@@ -72,18 +81,51 @@
       <div class="yearChecks" id="compareChecks"></div>
     </div>
 
-    <button id="plotBtn" class="plotBtn">Plot</button>
+    <div class="tsOnly tsPanel">
+      <div class="field">
+        <label for="tsStart">Start month</label>
+        <select id="tsStart"></select>
+      </div>
+      <div class="field">
+        <label for="tsEnd">End month</label>
+        <select id="tsEnd"></select>
+      </div>
+      <div class="field">
+        <label for="tsSpeed">Speed</label>
+        <select id="tsSpeed">
+          <option value="1">1 month / sec</option>
+          <option value="2" selected>2 months / sec</option>
+          <option value="4">4 months / sec</option>
+          <option value="12">12 months / sec</option>
+          <option value="24">24 months / sec</option>
+        </select>
+      </div>
+      <div class="actionRow">
+        <button id="tsPlayBtn" class="smallBtn">Play</button>
+        <button id="tsRestartBtn" class="smallBtn">Restart</button>
+      </div>
+      <input type="range" id="tsScrub" min="0" max="1000" value="0" step="1">
+      <p class="note" id="tsNote"></p>
+    </div>
+
+    <button id="plotBtn" class="plotBtn defaultOnly">Plot</button>
     <button id="viewFullCsvBtn" class="ghostBtn">View full CSV</button>
-    <button id="viewPlottedCsvBtn" class="ghostBtn">View plotted rows</button>
+    <button id="viewPlottedCsvBtn" class="ghostBtn defaultOnly">View plotted rows</button>
 
     <p class="note" id="statusNote"></p>
-
-    <a href="https://hsokey-berk.github.io/NPDeviation/" class="sidebarLink">Standard Deviations →</a>
   </aside>
 
   <main class="stage">
     <div id="plot" class="plot"></div>
     <div id="areaResult" class="areaResult" hidden></div>
+
+    <div id="tsStage" class="tsStage">
+      <div id="tsReadout" class="tsReadout"></div>
+      <div class="tsPlots">
+        <div id="tsProfile" class="tsPlot"></div>
+        <div id="tsTime" class="tsPlot"></div>
+      </div>
+    </div>
   </main>
 
 </div>
@@ -109,6 +151,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 <script src="config.js"></script>
 <script src="script.js"></script>
+<script src="timeseries.js"></script>
 
 </body>
 </html>
