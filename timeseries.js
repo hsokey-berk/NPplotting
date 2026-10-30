@@ -9,8 +9,11 @@
 // gives an equivalent water depth in meters.
 //
 // Within one calendar month, readings taken at the same depth (repeat
-// readings, or several visits pooled into the month) are AVERAGED. This
-// differs from the standard plot, which does not average them.
+// counts, or several visits pooled into the month) are averaged so each
+// depth has a single value. This differs from the standard plot, which
+// does not average them.
+//
+// Moisture differences are displayed in mm (equivalent water depth).
 
 (function () {
   "use strict";
@@ -26,7 +29,9 @@
     P: null,        // prepared analysis for the selected range
     T: 0,           // current animation time, in calendar months (year*12 + month-1, fractional)
     playing: false,
-    speed: 2,       // months per second
+    speed: (typeof TS_MONTHS_PER_SECOND === "number" && TS_MONTHS_PER_SECOND > 0) ? TS_MONTHS_PER_SECOND : 1,
+    reqStart: (typeof TS_DEFAULT_START !== "undefined") ? TS_DEFAULT_START.year * 12 + (TS_DEFAULT_START.month - 1) : 2025 * 12 + 4,
+    reqEnd: Infinity,  // requested range persists across hole changes
     raf: null,
     last: null,
     lastRender: 0
@@ -47,7 +52,7 @@
       const idx = r.date.year * 12 + (r.date.month - 1);
       let m = byIdx.get(idx);
       if (!m) {
-        m = { idx, depthMap: new Map(), nRaw: 0 };
+        m = { idx, depthMap: new Map(), nRaw: 0, days: new Set() };
         byIdx.set(idx, m);
       }
       const d = Math.round(r.cableFt * FT_TO_M * 1e6) / 1e6;
@@ -55,6 +60,7 @@
       const t = thetaOf(r.neutron);
       if (acc) { acc.sum += t; acc.n += 1; } else { m.depthMap.set(d, { sum: t, n: 1 }); }
       m.nRaw += 1;
+      m.days.add(r.date.day);
     });
 
     return [...byIdx.values()]
@@ -62,7 +68,7 @@
         const pts = [...m.depthMap.entries()]
           .map(([d, a]) => [d, a.sum / a.n])
           .sort((x, y) => x[0] - y[0]);
-        return { idx: m.idx, depths: pts.map((p) => p[0]), values: pts.map((p) => p[1]), nRaw: m.nRaw };
+        return { idx: m.idx, depths: pts.map((p) => p[0]), values: pts.map((p) => p[1]), nRaw: m.nRaw, nDates: m.days.size };
       })
       .filter((s) => s.depths.length >= 2)
       .sort((a, b) => a.idx - b.idx);
@@ -123,14 +129,14 @@
 
     const first = sub[0];
     const limited = lo > first.depths[0] + 1e-9 || hi < first.depths[first.depths.length - 1] - 1e-9;
-    const averaged = sub.reduce((n, s) => n + (s.nRaw - s.depths.length), 0);
+    const mergedMonths = sub.filter((s) => s.nDates > 1).map((s) => label(s.idx));
 
     return {
       sub, grid, gridVals, cum, maxAbs,
       T0: sub[0].idx, T1: sub[sub.length - 1].idx,
       xRange: [xmin - xpad, xmax + xpad],
       yRange: [ymax + ypad, Math.max(0, ymin - ypad)], // reversed: depth increases downward
-      overlap: [lo, hi], limited, averaged
+      overlap: [lo, hi], limited, mergedMonths
     };
   }
 
@@ -263,7 +269,8 @@
       shapes: []
     }, cfg);
 
-    const steps = P.sub.slice(1).map((s, i) => P.cum[i + 1] - P.cum[i]);
+    const cumMm = P.cum.map((v) => v * 1000);
+    const steps = P.sub.slice(1).map((s, i) => cumMm[i + 1] - cumMm[i]);
     Plotly.newPlot("tsTime", [
       {
         type: "bar", x: P.sub.slice(1).map((s) => dateStr(s.idx)), y: steps,
@@ -271,7 +278,7 @@
         marker: { color: steps.map((v) => (v >= 0 ? "rgba(74,144,194,0.45)" : "rgba(164,85,46,0.45)")) }
       },
       {
-        x: P.sub.map((s) => dateStr(s.idx)), y: P.cum, mode: "lines+markers",
+        x: P.sub.map((s) => dateStr(s.idx)), y: cumMm, mode: "lines+markers",
         name: "Net change vs start", line: { color: "#1E2624", width: 2 }, marker: { size: 6 }
       },
       {
@@ -281,7 +288,7 @@
     ], {
       title: { text: "Moisture difference through time", font: { size: 14 } },
       xaxis: { type: "date" },
-      yaxis: { title: "\u0394 water depth vs start (m)", zeroline: true },
+      yaxis: { title: "\u0394 moisture (mm)", zeroline: true },
       font: { family: "IBM Plex Sans", color: "#1E2624" },
       plot_bgcolor: "#FFFFFF", paper_bgcolor: "#FFFFFF",
       margin: { t: 50, r: 30, l: 70, b: 50 },
@@ -290,7 +297,7 @@
   }
 
   function signed(v) {
-    return (v >= 0 ? "+" : "") + v.toFixed(5);
+    return (v >= 0 ? "+" : "") + v.toFixed(2);
   }
 
   function render(T) {
@@ -302,12 +309,12 @@
 
     Plotly.restyle("tsProfile", { x: [fr.vals], y: [P.grid], name: [`Now: ${nowLabel}`] }, [1]);
     Plotly.relayout("tsProfile", { shapes: sh.shapes });
-    Plotly.restyle("tsTime", { x: [[dateOfT(T)]], y: [[fr.net]] }, [2]);
+    Plotly.restyle("tsTime", { x: [[dateOfT(T)]], y: [[fr.net * 1000]] }, [2]);
 
     const crossed = Math.abs(sh.total - Math.abs(sh.net)) > 1e-9 * Math.max(1, sh.total);
     $("tsReadout").textContent =
-      `${label(P.T0)} \u2192 ${label(P.T1)}  |  now ${nowLabel}  |  net change vs start ${signed(sh.net)} m` +
-      (crossed ? `  |  total area ${sh.total.toFixed(5)} m` : "");
+      `${label(P.T0)} \u2192 ${label(P.T1)}  |  now ${nowLabel}  |  net change vs start ${signed(sh.net * 1000)} mm` +
+      (crossed ? `  |  total area ${(sh.total * 1000).toFixed(2)} mm` : "");
 
     $("tsScrub").value = String(Math.round(((T - P.T0) / (P.T1 - P.T0)) * 1000));
   }
@@ -353,14 +360,47 @@
 
   // ---------- selection / setup ----------
 
-  function fillStartEnd() {
-    const opts = S.surveys.map((s) => `<option value="${s.idx}">${label(s.idx)}</option>`).join("");
-    $("tsStart").innerHTML = opts;
-    $("tsEnd").innerHTML = opts;
-    if (S.surveys.length) {
-      $("tsStart").value = String(S.surveys[0].idx);
-      $("tsEnd").value = String(S.surveys[S.surveys.length - 1].idx);
-    }
+  // ---- start / end pickers (month + year, limited to months with data) ----
+
+  function yearsAvailable() {
+    return [...new Set(S.surveys.map((s) => Math.floor(s.idx / 12)))].sort((a, b) => b - a);
+  }
+
+  function monthsAvailable(year) {
+    return S.surveys.filter((s) => Math.floor(s.idx / 12) === year).map((s) => s.idx % 12);
+  }
+
+  function fillMonths(which, wantMonth) {
+    const year = parseInt($(`ts${which}Year`).value, 10);
+    const ms = monthsAvailable(year);
+    const pick = ms.includes(wantMonth)
+      ? wantMonth
+      : ms.reduce((best, m) => (Math.abs(m - wantMonth) < Math.abs(best - wantMonth) ? m : best), ms[0]);
+    $(`ts${which}Month`).innerHTML = ms.map((m) => `<option value="${m}">${MONTHS[m]}</option>`).join("");
+    $(`ts${which}Month`).value = String(pick);
+  }
+
+  function fillEndpoint(which, idx) {
+    const ySel = $(`ts${which}Year`);
+    ySel.innerHTML = yearsAvailable().map((y) => `<option value="${y}">${y}</option>`).join("");
+    ySel.value = String(Math.floor(idx / 12));
+    fillMonths(which, idx % 12);
+  }
+
+  function readEndpoint(which) {
+    return parseInt($(`ts${which}Year`).value, 10) * 12 + parseInt($(`ts${which}Month`).value, 10);
+  }
+
+  // Map the requested range onto this hole's surveys: first survey on/after the
+  // requested start, last survey on/before the requested end.
+  function resolveRange() {
+    const sv = S.surveys;
+    const start = sv.find((s) => s.idx >= S.reqStart) || sv[0];
+    let end = null;
+    sv.forEach((s) => { if (s.idx <= S.reqEnd) end = s; });
+    end = end || sv[sv.length - 1];
+    const adjusted = start.idx !== S.reqStart || (isFinite(S.reqEnd) && end.idx !== S.reqEnd);
+    return { start: start.idx, end: end.idx, adjusted };
   }
 
   function clearFigures(message) {
@@ -371,24 +411,28 @@
     $("tsNote").textContent = message || "";
   }
 
-  function setup() {
+  function setup(extraNotes) {
     pause();
-    const startIdx = parseInt($("tsStart").value, 10);
-    const endIdx = parseInt($("tsEnd").value, 10);
+    const startIdx = readEndpoint("Start");
+    const endIdx = readEndpoint("End");
 
     if (!S.surveys.length) return clearFigures("No months with data for this hole.");
-    if (!(endIdx > startIdx)) return clearFigures("Choose an end month after the start month.");
+    if (endIdx === startIdx) return clearFigures("Only one month with data in this range for this hole.");
+    if (endIdx < startIdx) return clearFigures("Choose an end month after the start month.");
 
     const P = prepare(S.surveys, startIdx, endIdx);
     if (P.error) return clearFigures(P.error);
 
     S.P = P;
     S.T = P.T0;
-    S.speed = parseFloat($("tsSpeed").value) || 2;
 
-    const notes = [];
+    const notes = extraNotes ? [...extraNotes] : [];
     if (P.limited) notes.push(`Depth range limited to the overlap of all surveys: ${P.overlap[0].toFixed(2)}\u2013${P.overlap[1].toFixed(2)} m.`);
-    if (P.averaged > 0) notes.push(`${P.averaged} repeated readings at the same depth were averaged.`);
+    if (P.mergedMonths.length) {
+      const shown = P.mergedMonths.slice(0, 4).join(", ");
+      const more = P.mergedMonths.length > 4 ? ` +${P.mergedMonths.length - 4} more` : "";
+      notes.push(`Readings from more than one visit date were averaged in: ${shown}${more}.`);
+    }
     $("tsNote").textContent = notes.join(" ");
 
     initFigures();
@@ -399,8 +443,11 @@
   function onSelectionChanged() {
     if (typeof rows === "undefined" || rows.length === 0) return clearFigures("Data not loaded yet.");
     S.surveys = buildSurveys($("siteSelect").value, $("holeSelect").value);
-    fillStartEnd();
-    setup();
+    if (!S.surveys.length) return clearFigures("No months with data for this hole.");
+    const r = resolveRange();
+    fillEndpoint("Start", r.start);
+    fillEndpoint("End", r.end);
+    setup(r.adjusted ? ["Range adjusted to the months with data for this hole."] : []);
   }
 
   function enter() {
@@ -421,9 +468,18 @@
   $("modeSelect").addEventListener("change", (e) => (e.target.value === "timeseries" ? enter() : leave()));
   $("siteSelect").addEventListener("change", () => { if (S.active) onSelectionChanged(); });
   $("holeSelect").addEventListener("change", () => { if (S.active) onSelectionChanged(); });
-  $("tsStart").addEventListener("change", () => { if (S.active) setup(); });
-  $("tsEnd").addEventListener("change", () => { if (S.active) setup(); });
-  $("tsSpeed").addEventListener("change", () => { S.speed = parseFloat($("tsSpeed").value) || 2; });
+  ["Start", "End"].forEach((which) => {
+    const commit = () => {
+      if (!S.active) return;
+      if (which === "Start") S.reqStart = readEndpoint("Start"); else S.reqEnd = readEndpoint("End");
+      setup();
+    };
+    $(`ts${which}Year`).addEventListener("change", () => {
+      fillMonths(which, parseInt($(`ts${which}Month`).value, 10));
+      commit();
+    });
+    $(`ts${which}Month`).addEventListener("change", commit);
+  });
   $("tsPlayBtn").addEventListener("click", () => { if (S.playing) pause(); else play(); });
   $("tsRestartBtn").addEventListener("click", () => {
     if (!S.P) return;
