@@ -142,6 +142,16 @@ select:focus, .plotBtn:focus, input:focus {
 
 .smallBtn:hover { border-color: var(--accent); color: var(--accent); }
 
+.field label.checkboxLabel {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 400;
+  color: var(--ink);
+  cursor: pointer;
+}
+
 .yearChecks {
   display: flex;
   flex-direction: column;
@@ -380,44 +390,63 @@ select:focus, .plotBtn:focus, input:focus {
   font-style: italic;
 }
 
-.viewerBtn {
-  position: fixed;
-  top: 16px;
-  right: 20px;
-  z-index: 100;
-  background: var(--accent);
-  color: var(--accent-ink);
-  font-family: 'IBM Plex Sans', system-ui, sans-serif;
-  font-size: 13px;
-  font-weight: 600;
-  text-decoration: none;
-  padding: 8px 16px;
-  border-radius: 3px;
-  transition: background 0.15s ease;
-}
-
-.viewerBtn:hover {
-  background: #26594E;
-}
-
-.sidebarLink {
-  margin-top: auto;
-  text-align: center;
-  font-size: 11.5px;
-  color: var(--ink-soft);
-  text-decoration: none;
-  padding: 8px 0;
-  letter-spacing: 0.02em;
-  transition: color 0.15s ease;
-}
-
-.sidebarLink:hover {
-  color: var(--accent);
-}
-
 @media (max-width: 800px) {
   .frame { grid-template-columns: 1fr; grid-template-rows: auto 1fr; height: auto; min-height: 100vh; }
   .rail { border-right: none; border-bottom: 1px solid var(--line); height: auto; overflow-y: visible; max-height: 60vh; }
   .stage { padding: 16px; height: auto; overflow: visible; }
   .plot { min-height: 420px; }
+}
+
+/* ---- Fix: native [hidden] must beat .field's display:flex ---- */
+.field[hidden] { display: none; }
+
+/* ---- Mode switching (time-series mode is fully separate from the standard plot) ---- */
+.tsOnly { display: none; }
+body.tsMode .tsOnly { display: flex; flex-direction: column; gap: 12px; }
+body.tsMode .defaultOnly { display: none; }
+body.tsMode #plot,
+body.tsMode #areaResult { display: none; }
+
+.tsStage { display: none; }
+body.tsMode .tsStage {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  flex: 1;
+  min-height: 0;
+}
+
+.tsReadout {
+  flex: none;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--accent);
+  border-radius: 4px;
+  padding: 10px 14px;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 13px;
+  min-height: 1.5em;
+}
+
+.tsPlots {
+  display: flex;
+  gap: 14px;
+  flex: 1;
+  min-height: 0;
+}
+
+.tsPlot {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+}
+
+#tsScrub { width: 100%; accent-color: var(--accent); }
+
+@media (max-width: 800px) {
+  body.tsMode .tsPlots { flex-direction: column; }
+  body.tsMode .tsPlot { min-height: 360px; }
 }
