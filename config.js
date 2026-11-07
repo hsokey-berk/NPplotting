@@ -21,5 +21,5 @@ const THETA_SLOPE = 0.00005442;
 const THETA_INTERCEPT = -0.1602;
 
 const RAIN_CSV_FILENAME = "DendraRain.csv";   // e.g. "DendraRain.csv"; empty = off
-const RAIN_TIME_COLUMN = "time";    // optional
-const RAIN_VALUE_COLUMN = "rainfall-cumulative-mm";   // optional
+const RAIN_TIME_COLUMN = "";    // optional
+const RAIN_VALUE_COLUMN = "";   // optional
