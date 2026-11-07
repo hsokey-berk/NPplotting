@@ -445,7 +445,9 @@
 
   function setPlayLabel() {
     const P = S.P;
-    $("tsPlayBtn").textContent = S.playing ? "Pause" : (P && S.T >= P.T1 - 1e-9 ? "Replay" : "Play");
+    const btn = $("tsPlayBtn");
+    btn.textContent = S.playing ? "\u275A\u275A Pause" : (P && S.T >= P.T1 - 1e-9 ? "\u21BB Replay" : "\u25B6\uFE0E Play");
+    btn.classList.toggle("isPlaying", S.playing);
   }
 
   function setSpeed(i) {
