@@ -102,18 +102,22 @@
           Show rainfall
         </label>
       </div>
-      <div class="actionRow">
-        <button id="tsPrevBtn" class="smallBtn" title="Previous visit (left arrow)">&lsaquo; Prev</button>
-        <button id="tsPlayBtn" class="smallBtn" title="Play / pause (space)">Play</button>
-        <button id="tsNextBtn" class="smallBtn" title="Next visit (right arrow)">Next &rsaquo;</button>
+      <div class="tsControls">
+        <div class="tsTransport">
+          <button id="tsPrevBtn" class="tsStepBtn" title="Previous visit (left arrow)">&lsaquo; Prev</button>
+          <button id="tsPlayBtn" class="tsPlayBtn" title="Play / pause (space)">Play</button>
+          <button id="tsNextBtn" class="tsStepBtn" title="Next visit (right arrow)">Next &rsaquo;</button>
+        </div>
+        <input type="range" id="tsScrub" min="0" max="1000" value="0" step="1">
+        <div class="tsSpeedRow">
+          <div class="tsSpeedGroup">
+            <button id="tsSlowBtn" title="Slower (down arrow)">&minus;</button>
+            <span id="tsSpeedLabel" class="tsSpeedLabel"></span>
+            <button id="tsFastBtn" title="Faster (up arrow)">+</button>
+          </div>
+          <button id="tsRestartBtn" class="tsRestartBtn">Restart</button>
+        </div>
       </div>
-      <div class="actionRow tsSpeedRow">
-        <button id="tsSlowBtn" class="smallBtn" title="Slower (down arrow)">&minus;</button>
-        <span id="tsSpeedLabel" class="tsSpeedLabel"></span>
-        <button id="tsFastBtn" class="smallBtn" title="Faster (up arrow)">+</button>
-        <button id="tsRestartBtn" class="smallBtn">Restart</button>
-      </div>
-      <input type="range" id="tsScrub" min="0" max="1000" value="0" step="1">
       <p class="note tsHint">Space: play/pause &middot; &larr;/&rarr;: step &middot; &uarr;/&darr;: speed</p>
       <p class="note" id="tsNote"></p>
     </div>
