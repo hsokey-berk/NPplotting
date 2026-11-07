@@ -20,3 +20,6 @@ const DEFAULT_SITE = "Rivendell";
 const THETA_SLOPE = 0.00005442;
 const THETA_INTERCEPT = -0.1602;
 
+const RAIN_CSV_FILENAME = "";   // e.g. "DendraRain.csv"; empty = off
+const RAIN_TIME_COLUMN = "";    // optional
+const RAIN_VALUE_COLUMN = "";   // optional
