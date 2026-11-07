@@ -306,6 +306,18 @@
 
   const rainCovers = (R, T0, T1) => R.days[0] <= T0 + 2 && R.days[R.days.length - 1] >= T1 - 2;
 
+  const rainConfigured = () => typeof RAIN_CSV_FILENAME === "string" && RAIN_CSV_FILENAME.trim() !== "";
+
+  // rebuild the figures (e.g. after toggling rainfall) without losing the current time
+  function resetupKeepTime() {
+    const keep = S.T, was = S.playing;
+    setup();
+    if (!S.P) return;
+    S.T = Math.min(S.P.T1, Math.max(S.P.T0, keep));
+    render(S.T);
+    if (was) play(); else setPlayLabel();
+  }
+
   function loadRain() {
     if (S.rainStatus !== "off") return;
     const file = (typeof RAIN_CSV_FILENAME === "string") ? RAIN_CSV_FILENAME.trim() : "";
@@ -326,9 +338,9 @@
       complete: () => {
         const out = acc.finish();
         if (out.error) { S.rainStatus = "error"; S.rainError = out.error; } else { S.rain = out; S.rainStatus = "ready"; }
-        if (S.active) setup();
+        if (S.active) resetupKeepTime();
       },
-      error: () => { S.rainStatus = "error"; S.rainError = `Could not load ${file}.`; if (S.active) setup(); }
+      error: () => { S.rainStatus = "error"; S.rainError = `Could not load ${file}.`; if (S.active) resetupKeepTime(); }
     });
   }
 
@@ -541,11 +553,13 @@
 
     P.rainOn = false;
     const notes = extraNotes ? [...extraNotes] : [];
-    if (S.rainStatus === "ready") {
-      if (rainCovers(S.rain, P.T0, P.T1)) P.rainOn = true;
-      else notes.push(`Rainfall data covers ${isoDate(S.rain.days[0])} to ${isoDate(S.rain.days[S.rain.days.length - 1])}, not this whole range.`);
-    } else if (S.rainStatus === "error") notes.push(`Rainfall: ${S.rainError}`);
-    else if (S.rainStatus === "loading") notes.push("Loading rainfall data\u2026");
+    if ($("tsRainCheckbox").checked) {
+      if (S.rainStatus === "ready") {
+        if (rainCovers(S.rain, P.T0, P.T1)) P.rainOn = true;
+        else notes.push(`Rainfall data covers ${isoDate(S.rain.days[0])} to ${isoDate(S.rain.days[S.rain.days.length - 1])}, not this whole range.`);
+      } else if (S.rainStatus === "error") notes.push(`Rainfall: ${S.rainError}`);
+      else if (S.rainStatus === "loading") notes.push("Loading rainfall data\u2026");
+    }
 
     S.P = P;
     S.T = P.T0;
@@ -575,7 +589,7 @@
   function enter() {
     document.body.classList.add("tsMode");
     S.active = true;
-    loadRain();
+    $("tsRainField").hidden = !rainConfigured();
     onSelectionChanged();
   }
 
@@ -626,6 +640,14 @@
       commit();
     });
     $(`ts${which}Date`).addEventListener("change", commit);
+  });
+
+  // rainfall is only loaded the first time it's switched on
+  $("tsRainCheckbox").addEventListener("change", (e) => {
+    if (!S.active) return;
+    if (e.target.checked && S.rainStatus === "off") loadRain();
+    resetupKeepTime();
+    e.target.blur();
   });
 
   click("tsPlayBtn", () => (S.playing ? pause() : play()));
