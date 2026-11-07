@@ -459,3 +459,102 @@ body.tsMode .tsStage {
   text-align: center;
 }
 .tsHint { font-size: 11.5px; margin: 0; }
+
+/* ---- Time controls (time-series mode): a distinct card, with a prominent Play button ---- */
+.tsControls {
+  background: #F4F6F3;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.tsTransport {
+  display: grid;
+  grid-template-columns: 1fr 1.7fr 1fr;
+  gap: 8px;
+  align-items: stretch;
+}
+
+.tsPlayBtn {
+  background: var(--accent);
+  color: var(--accent-ink);
+  border: none;
+  border-radius: 5px;
+  padding: 13px 10px;
+  font-family: inherit;
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  cursor: pointer;
+  box-shadow: 0 1px 2px rgba(30, 38, 36, 0.25);
+  transition: background 0.15s ease;
+}
+.tsPlayBtn:hover { background: #26594E; }
+.tsPlayBtn.isPlaying { background: var(--ink); }
+
+.tsStepBtn {
+  background: var(--panel);
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  padding: 10px 8px;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+}
+.tsStepBtn:hover { border-color: var(--accent); color: var(--accent); }
+
+#tsScrub { height: 22px; margin: 0; }
+
+.tsSpeedRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.tsSpeedGroup {
+  display: flex;
+  align-items: stretch;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  overflow: hidden;
+}
+.tsSpeedGroup button {
+  border: none;
+  background: transparent;
+  color: var(--ink);
+  width: 32px;
+  font-size: 17px;
+  line-height: 1;
+  cursor: pointer;
+}
+.tsSpeedGroup button:hover { background: #E7EEEB; color: var(--accent); }
+.tsSpeedGroup .tsSpeedLabel {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 6px;
+  border-left: 1px solid var(--line);
+  border-right: 1px solid var(--line);
+}
+
+.tsRestartBtn {
+  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  padding: 7px 12px;
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--ink-soft);
+  cursor: pointer;
+}
+.tsRestartBtn:hover { border-color: var(--accent); color: var(--accent); }
+
+.tsControls button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
