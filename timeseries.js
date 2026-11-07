@@ -219,50 +219,80 @@
 
   // ---------- rainfall (cumulative datastream that resets each Oct 1) ----------
 
+  // Explicit M/D/YYYY [H:mm[:ss]] and ISO parsing (no locale-dependent Date.parse).
+  // Times are read as-is (treated as UTC); a few hours of offset is irrelevant at the daily scale.
+  const TIME_US = /^\s*(\d{1,2})\/(\d{1,2})\/(\d{4})(?:[ T]+(\d{1,2}):(\d{2})(?::(\d{2}))?)?/;
+  const TIME_ISO = /^\s*(\d{4})-(\d{1,2})-(\d{1,2})(?:[ T]+(\d{1,2}):(\d{2})(?::(\d{2}))?)?/;
+
   function parseTime(str) {
     if (str == null) return null;
-    const s = String(str).trim();
-    if (!/\d{4}-\d{1,2}-\d{1,2}|\d{1,2}\/\d{1,2}\/\d{2,4}/.test(s)) return null;
-    const ms = Date.parse(s);
-    return isNaN(ms) ? null : ms;
+    const s = String(str);
+    let y, mo, d, m = TIME_US.exec(s);
+    if (m) { mo = +m[1]; d = +m[2]; y = +m[3]; }
+    else if ((m = TIME_ISO.exec(s))) { y = +m[1]; mo = +m[2]; d = +m[3]; }
+    else return null;
+    if (mo < 1 || mo > 12 || d < 1 || d > 31) return null;
+    return Date.UTC(y, mo - 1, d, +(m[4] || 0), +(m[5] || 0), +(m[6] || 0));
   }
 
-  // Daily end-of-day cumulative values -> reset-corrected running total C.
-  // A drop to under half the previous value is treated as a reset to zero
-  // (the new value is that day's rain); smaller drops are treated as noise.
-  function parseRainRows(data, fields, timeCol, valCol) {
-    const sample = (col) => { for (const r of data) if (r[col] != null && String(r[col]).trim() !== "") return r[col]; return null; };
-    let tc = timeCol && fields.includes(timeCol) ? timeCol : fields.find((f) => parseTime(sample(f)) !== null);
-    if (!tc) return { error: `No time column found. Columns: ${fields.join(", ")}` };
-    let vc = valCol && fields.includes(valCol) ? valCol : null;
-    if (!vc) {
-      const cands = fields.filter((f) => f !== tc && isFinite(parseFloat(sample(f))));
-      vc = cands.find((f) => /rain|precip|cumul/i.test(f)) || cands[0];
-    }
-    if (!vc) return { error: `No numeric value column found. Columns: ${fields.join(", ")}` };
-
-    const pts = [];
-    data.forEach((r) => {
-      const ms = parseTime(r[tc]);
-      const v = parseFloat(r[vc]);
-      if (ms !== null && isFinite(v)) pts.push([ms, v]);
-    });
-    if (pts.length < 2) return { error: "Fewer than two usable rainfall rows." };
-    pts.sort((a, b) => a[0] - b[0]);
-
+  // Streams rows in (so a 900,000-row file never sits in memory at once), keeping
+  // only the last reading of each day. finish() turns those into a reset-corrected
+  // running total C: a drop to under half the previous value is treated as a reset
+  // to zero (the new value is that day's rain); smaller drops are treated as noise.
+  function makeRainAccumulator(timeCol, valCol) {
     const daily = new Map();
-    pts.forEach(([ms, v]) => daily.set(Math.floor(ms / DAY), v)); // last value of each day
-    const dayKeys = [...daily.keys()].sort((a, b) => a - b);
-    const vals = dayKeys.map((k) => daily.get(k));
+    let tc = null, vc = null, error = null, nRows = 0;
 
-    const days = dayKeys.map((k) => k + 1); // end-of-day value, attributed to the end of that day
-    const C = [0];
-    for (let i = 1; i < vals.length; i++) {
-      const dv = vals[i] - vals[i - 1];
-      const inc = dv >= 0 ? dv : (vals[i] < 0.5 * vals[i - 1] ? vals[i] : 0);
-      C.push(C[i - 1] + inc);
+    function detect(data, fields) {
+      const sample = (col) => { for (const r of data) if (r[col] != null && String(r[col]).trim() !== "") return r[col]; return null; };
+      if (timeCol && !fields.includes(timeCol)) return `Time column "${timeCol}" not found. Columns: ${fields.join(", ")}`;
+      if (valCol && !fields.includes(valCol)) return `Value column "${valCol}" not found. Columns: ${fields.join(", ")}`;
+      tc = timeCol || fields.find((f) => parseTime(sample(f)) !== null);
+      if (!tc) return `No time column found (expected M/D/YYYY or YYYY-MM-DD). Columns: ${fields.join(", ")}`;
+      vc = valCol;
+      if (!vc) {
+        const cands = fields.filter((f) => f !== tc && isFinite(parseFloat(sample(f))));
+        vc = cands.find((f) => /rain|precip|cumul/i.test(f)) || cands[0];
+      }
+      if (!vc) return `No numeric value column found. Columns: ${fields.join(", ")}`;
+      return null;
     }
-    return { days, C, timeCol: tc, valCol: vc };
+
+    return {
+      add(data, fields) {
+        if (error || !data.length) return;
+        if (!tc) { error = detect(data, fields || []); if (error) return; }
+        for (let i = 0; i < data.length; i++) {
+          const r = data[i];
+          const ms = parseTime(r[tc]);
+          const v = parseFloat(r[vc]);
+          if (ms === null || !isFinite(v)) continue;
+          nRows++;
+          const k = Math.floor(ms / DAY);
+          const e = daily.get(k);
+          if (!e || ms >= e.ts) daily.set(k, { ts: ms, v });
+        }
+      },
+      finish() {
+        if (error) return { error };
+        if (daily.size < 2) return { error: "Fewer than two usable rainfall days." };
+        const keys = [...daily.keys()].sort((x, y) => x - y);
+        const vals = keys.map((k) => daily.get(k).v);
+        const days = keys.map((k) => k + 1); // end-of-day value, attributed to the end of that day
+        const C = [0];
+        for (let i = 1; i < vals.length; i++) {
+          const dv = vals[i] - vals[i - 1];
+          C.push(C[i - 1] + (dv >= 0 ? dv : (vals[i] < 0.5 * vals[i - 1] ? vals[i] : 0)));
+        }
+        return { days, C, timeCol: tc, valCol: vc, nRows };
+      }
+    };
+  }
+
+  function parseRainRows(data, fields, timeCol, valCol) { // whole-array convenience wrapper
+    const acc = makeRainAccumulator(timeCol, valCol);
+    acc.add(data, fields);
+    return acc.finish();
   }
 
   function rainAt(R, t) { // running total at time t (days), linear between daily points
@@ -281,14 +311,20 @@
     const file = (typeof RAIN_CSV_FILENAME === "string") ? RAIN_CSV_FILENAME.trim() : "";
     if (!file || typeof Papa === "undefined") return;
     S.rainStatus = "loading";
+
+    const acc = makeRainAccumulator(
+      typeof RAIN_TIME_COLUMN === "string" ? RAIN_TIME_COLUMN.trim() : "",
+      typeof RAIN_VALUE_COLUMN === "string" ? RAIN_VALUE_COLUMN.trim() : ""
+    );
+    let fields = [];
     Papa.parse(file, {
       download: true, header: true, skipEmptyLines: true,
-      complete: (res) => {
-        const out = parseRainRows(
-          res.data, (res.meta && res.meta.fields) || [],
-          typeof RAIN_TIME_COLUMN === "string" ? RAIN_TIME_COLUMN.trim() : "",
-          typeof RAIN_VALUE_COLUMN === "string" ? RAIN_VALUE_COLUMN.trim() : ""
-        );
+      chunk: (res) => {
+        if (res.meta && res.meta.fields) fields = res.meta.fields;
+        acc.add(res.data, fields);
+      },
+      complete: () => {
+        const out = acc.finish();
         if (out.error) { S.rainStatus = "error"; S.rainError = out.error; } else { S.rain = out; S.rainStatus = "ready"; }
         if (S.active) setup();
       },
@@ -509,6 +545,7 @@
       if (rainCovers(S.rain, P.T0, P.T1)) P.rainOn = true;
       else notes.push(`Rainfall data covers ${isoDate(S.rain.days[0])} to ${isoDate(S.rain.days[S.rain.days.length - 1])}, not this whole range.`);
     } else if (S.rainStatus === "error") notes.push(`Rainfall: ${S.rainError}`);
+    else if (S.rainStatus === "loading") notes.push("Loading rainfall data\u2026");
 
     S.P = P;
     S.T = P.T0;
@@ -621,5 +658,5 @@
   setSpeed(S.speedIdx);
 
   // exposed for testing only
-  window.NPTimeSeries = { buildSurveys, prepare, frameAt, buildShading, parseRainRows, rainAt, state: S, render, setup, enter, leave, step, setSpeed, SPEEDS };
+  window.NPTimeSeries = { buildSurveys, prepare, frameAt, buildShading, parseRainRows, makeRainAccumulator, parseTime, rainAt, state: S, render, setup, enter, leave, step, setSpeed, SPEEDS };
 })();
