@@ -85,22 +85,30 @@
       <div class="field">
         <label>Start</label>
         <div class="filterRow">
-          <select id="tsStartMonth"></select>
+          <select id="tsStartDate"></select>
           <select id="tsStartYear"></select>
         </div>
       </div>
       <div class="field">
         <label>End</label>
         <div class="filterRow">
-          <select id="tsEndMonth"></select>
+          <select id="tsEndDate"></select>
           <select id="tsEndYear"></select>
         </div>
       </div>
       <div class="actionRow">
-        <button id="tsPlayBtn" class="smallBtn">Play</button>
+        <button id="tsPrevBtn" class="smallBtn" title="Previous visit (left arrow)">&lsaquo; Prev</button>
+        <button id="tsPlayBtn" class="smallBtn" title="Play / pause (space)">Play</button>
+        <button id="tsNextBtn" class="smallBtn" title="Next visit (right arrow)">Next &rsaquo;</button>
+      </div>
+      <div class="actionRow tsSpeedRow">
+        <button id="tsSlowBtn" class="smallBtn" title="Slower (down arrow)">&minus;</button>
+        <span id="tsSpeedLabel" class="tsSpeedLabel"></span>
+        <button id="tsFastBtn" class="smallBtn" title="Faster (up arrow)">+</button>
         <button id="tsRestartBtn" class="smallBtn">Restart</button>
       </div>
       <input type="range" id="tsScrub" min="0" max="1000" value="0" step="1">
+      <p class="note tsHint">Space: play/pause &middot; &larr;/&rarr;: step &middot; &uarr;/&darr;: speed</p>
       <p class="note" id="tsNote"></p>
     </div>
 
